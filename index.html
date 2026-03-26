@@ -1,0 +1,1819 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Workout Log</title>
+
+<!--
+  ============================================================================
+  WORKOUT LOG — Single-file calisthenics & nutrition tracker
+  ============================================================================
+
+  OVERVIEW:
+    Local HTML file opened directly in browser (file:// protocol).
+    Tracks daily exercises (sets/reps), cardio activities, meals (calories eaten),
+    and body measurements.
+    Based on Hybrid Calisthenics (https://www.hybridcalisthenics.com/programs).
+
+  STORAGE:
+    All data persisted in browser localStorage under key 'workout_log'.
+    Saves instantly on every keystroke (no save button needed).
+    Data survives browser restarts but NOT cache clearing or file moves.
+    Use Export/Import JSON for backups.
+
+  DATA STRUCTURE (state object stored in localStorage):
+    {
+      exercises: [                        // Master exercise list (shown in dropdowns)
+        { name: "Horiz. Pullups",         // Display name
+          rings: true,                    // Whether performed on gymnastic rings (⊙ badge)
+          sets: 3,                        // Number of sets to show (1-6, configurable in Manage panel)
+          masteryReps: 0                  // Reps-per-set goal to consider exercise "mastered" (0 = no goal)
+        }, ...
+      ],
+      days: {                             // Training log, keyed by ISO date string
+        "2025-03-23": {
+          exercises: [                    // Exercises logged that day (up to 8)
+            { name: "Horiz. Pullups",     // Must match a name from the exercises[] array
+              sets: ["26", "23", "20"]    // Array of string values, one per set
+            }, ...
+          ],
+          weight: "85",                   // Body weight in kg
+          waist: "88",                    // Waist circumference in cm (body tracking)
+          meals: [                        // Meals eaten that day (calories in)
+            { name: "Chicken rice", kcal: 650 }
+          ],
+          activities: [                   // Cardio/activities that day
+            { type: "running", km: "6.16", min: "45" },
+            { type: "rucking", km: "3", min: "30", kg: "20" },
+            { type: "walking", km: "5", min: "60" },
+            { type: "bicycling", km: "15", min: "40" }
+          ]
+        }, ...
+      }
+    }
+
+  DEFAULT WEEKLY PLAN (PLAN object):
+    Defines which exercises auto-populate when opening a day for the first time.
+    Mon: Horiz. Pullups, Dips / Hold, Straight Bridges
+    Tue: Biceps curls, Advanced Incline Pushups, Knee Raises
+    Wed: Horiz. Pullups, Straight Bridges, Squats
+    Thu: Dips / Hold, Advanced Incline Pushups, Knee Raises
+    Fri: Pullups, Biceps curls, Straight Bridges
+    Sat: Knee Raises, Advanced Incline Pushups, Squats
+    Sun: (empty — user can add exercises manually if desired)
+    The plan only seeds EMPTY days. Once a day has data, the plan is ignored.
+
+  UI LAYOUT:
+    Each day = one horizontal row:
+      [Day Label] [Tracking Cell] [Exercise Cell 1] [Exercise Cell 2] ... [+/−]
+
+    Tracking cell contains (per day):
+      - Weight input (kg)
+      - Waist input (cm) — body measurement tracking
+      - Activities count (clickable → Activities modal)
+      - Calories eaten (clickable → Meals modal)
+
+    Each exercise cell contains:
+      - Dropdown (select from master exercise list)
+      - History lines: -2w (2 weeks ago), -1w (last week), now (current, green)
+      - Set input fields (number depends on exercise's configured set count)
+
+    Today's row is highlighted with a purple border + glow.
+    Week navigation via ← Previous / Next → / Today buttons.
+
+  MODALS:
+    Meals modal     — Click calories. Add/edit/remove meals (name + kCal).
+                       Autocomplete suggests top 15 most frequent meals (datalist).
+                       Selecting a suggestion auto-fills kCal; any historical meal
+                       name typed exactly also auto-fills kCal via oninput.
+    Activities modal — Click activities count. Add/remove activities with params.
+    Manage modal    — Footer button. Add/remove exercises, configure sets, toggle rings.
+
+  KEY FUNCTIONS:
+    render()            — Rebuilds the entire week grid.
+    cell(d,dd,ei)       — Creates one exercise cell for a given day/exercise index.
+    save()              — Writes state to localStorage.
+    ensureDay(d)        — Gets or creates day data, seeding from PLAN if empty.
+    calcDayEaten()      — Sum of meals for a day.
+    buildMealSuggestions() — Populates datalist with top 15 most frequent meals.
+    autofillMealKcal()  — Auto-fills kCal when meal name matches a historical entry.
+    migrate()           — Data migration (exercise renames, old field conversions).
+
+  EXPORT/IMPORT:
+    - Export backup: Downloads complete state as JSON
+    - Import backup: Loads JSON file, replaces all data
+    - Export CSV: Semicolon-separated; exercises, activities, weight, waist, meals
+
+  ============================================================================
+-->
+
+<style>
+  /* Google Fonts: DM Sans (body) + JetBrains Mono (numbers, dates) */
+  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+  /* === COLOR PALETTE === */
+  :root {
+    --bg: #0f1117;       /* Page background */
+    --bg2: #181a24;      /* Card/cell background */
+    --bg3: #21242f;      /* Input/button background */
+    --bg4: #2a2e3b;      /* Hover states */
+    --border: #2f3340;   /* Borders */
+    --text: #e4e6ed;     /* Primary text */
+    --text2: #9ba0b0;    /* Secondary text */
+    --text3: #636879;    /* Muted/placeholder text */
+    --accent: #6c5ce7;   /* Primary accent (purple) — today highlight, focused inputs */
+    --accent2: #a29bfe;  /* Light accent */
+    --green: #00b894;    /* Current week data, success states */
+    --green2: #55efc4;   /* Light green */
+    --red: #e17055;      /* Delete/remove actions */
+    --orange: #f5a623;   /* Rings badge (⊙) */
+    --pink: #e84393;     /* Unused, kept for potential future use */
+    --radius: 10px;
+    --radius-sm: 6px;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'DM Sans', sans-serif; background: var(--bg);
+    color: var(--text); min-height: 100vh; padding: 16px;
+  }
+
+  .container { max-width: 1200px; margin: 0 auto; }
+
+  /* === HEADER === */
+  .header { text-align: center; padding: 14px 0 4px; }
+  .header h1 {
+    font-size: 24px; font-weight: 700; letter-spacing: -0.5px;
+    background: linear-gradient(135deg, var(--accent2), var(--green2));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .header .sub { color: var(--text3); font-size: 11px; margin-top: 2px; }
+  .header a { color: var(--accent2); text-decoration: none; font-size: 11px; }
+  .header a:hover { text-decoration: underline; }
+
+  /* === WEEK NAVIGATION BAR === */
+  .week-nav {
+    display: flex; align-items: center; justify-content: center;
+    gap: 12px; margin: 14px 0;
+  }
+  .week-nav button {
+    background: var(--bg3); border: 1px solid var(--border); color: var(--text);
+    padding: 6px 14px; border-radius: var(--radius-sm); cursor: pointer;
+    font-family: inherit; font-size: 13px; transition: all .15s;
+  }
+  .week-nav button:hover { background: var(--bg4); border-color: var(--accent); }
+  .week-nav .today-btn { background: var(--accent); border-color: var(--accent); font-weight: 600; color: white; }
+  .week-nav .today-btn:hover { background: var(--accent2); }
+  .week-nav .week-label {
+    font-family: 'JetBrains Mono', monospace; font-size: 15px;
+    font-weight: 600; color: var(--text); min-width: 260px; text-align: center;
+  }
+
+  /* === DAY ROW — one per day, contains label + exercise cells === */
+  .day-row {
+    display: flex; gap: 8px; margin-bottom: 8px; align-items: stretch; position: relative;
+  }
+  /* Purple glow border around today's row */
+  .day-row.is-today::before {
+    content: ''; position: absolute;
+    left: -4px; top: -3px; bottom: -3px; right: -4px;
+    border: 2px solid var(--accent); border-radius: 14px;
+    pointer-events: none; box-shadow: 0 0 20px rgba(108,92,231,.15);
+  }
+
+  /* === DAY LABEL — left column showing day name + date === */
+  .day-label {
+    width: 100px; min-width: 100px; border-radius: var(--radius);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: 8px 6px; flex-shrink: 0;
+  }
+  .day-label-name { font-size: 12px; font-weight: 700; color: white; text-transform: uppercase; letter-spacing: .5px; }
+  .day-label-date { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: rgba(255,255,255,.7); margin-top: 1px; }
+  .day-label .today-tag {
+    font-size: 8px; font-weight: 700; color: white;
+    background: rgba(0,0,0,.3); padding: 1px 7px; border-radius: 8px;
+    margin-top: 3px; letter-spacing: 1px;
+  }
+
+  /* === EXERCISE ROW — flex container for exercise cells, wraps if >3-4 exercises === */
+  .exercises-row { display: flex; flex: 1; gap: 6px; min-width: 0; flex-wrap: wrap; }
+
+  /* === EXERCISE CELL — one per exercise: dropdown + history + set inputs === */
+  .exercise-cell {
+    flex: 1 1 120px; background: var(--bg2); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 8px; display: flex;
+    flex-direction: column; min-width: 100px; transition: border-color .15s;
+  }
+  .exercise-cell:hover { border-color: var(--bg4); }
+
+  /* Exercise dropdown */
+  .exercise-cell select {
+    width: 100%; font-size: 11px; padding: 4px 6px;
+    background: var(--bg3); border: 1px solid var(--border); color: var(--text);
+    border-radius: var(--radius-sm); font-family: inherit; cursor: pointer;
+    outline: none; margin-bottom: 3px;
+  }
+  .exercise-cell select:focus { border-color: var(--accent); }
+
+  /* === HISTORY LINES — show -2w, -1w, now data === */
+  .wk-line {
+    font-family: 'JetBrains Mono', monospace; font-size: 9px;
+    display: flex; align-items: center; gap: 3px; line-height: 1.4;
+  }
+  .wk-label { font-family: 'DM Sans', sans-serif; font-size: 9px; color: var(--text3); white-space: nowrap; width: 28px; flex-shrink: 0; }
+  .wk-val { color: var(--text2); }              /* Past weeks — gray */
+  .wk-val.cur { color: var(--green); font-weight: 500; }  /* Current week — green */
+  .wk-none { color: var(--text3); }              /* No data — dash */
+
+  /* === SET INPUT ROW — horizontal row of text inputs, one per set === */
+  .sets-row {
+    display: flex; gap: 3px; margin-top: 4px;
+  }
+  .sets-row input {
+    flex: 1; font-family: 'JetBrains Mono', monospace; font-size: 13px;
+    padding: 4px 2px; background: var(--bg3); border: 1px solid var(--border);
+    color: var(--text); border-radius: 4px; outline: none; text-align: center;
+    transition: border-color .15s; min-width: 0;
+  }
+  .sets-row input:focus { border-color: var(--accent); }
+  .sets-row input::placeholder { color: var(--text3); opacity: .3; font-size: 10px; }
+
+  /* === ADD/REMOVE EXERCISE BUTTONS — circular +/− at end of each row === */
+  .add-ex-cell {
+    width: 28px; min-width: 28px; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 4px; flex-shrink: 0;
+  }
+  .add-ex-btn, .rm-ex-btn {
+    width: 24px; height: 24px; border-radius: 50%; border: 1px dashed var(--border);
+    background: var(--bg2); color: var(--text3); cursor: pointer;
+    font-size: 14px; display: flex; align-items: center; justify-content: center;
+    transition: all .15s; font-family: inherit;
+  }
+  .add-ex-btn:hover { border-color: var(--green); color: var(--green); }
+  .rm-ex-btn:hover { border-color: var(--red); color: var(--red); }
+
+  /* === FOOTER === */
+  .footer {
+    margin-top: 14px; padding: 10px 0;
+    display: flex; align-items: center; justify-content: flex-end;
+    flex-wrap: wrap; gap: 8px;
+  }
+  .footer-right { display: flex; gap: 6px; flex-wrap: wrap; }
+  .footer-btn {
+    background: var(--bg3); border: 1px solid var(--border); color: var(--text3);
+    padding: 5px 12px; border-radius: var(--radius-sm); cursor: pointer;
+    font-family: inherit; font-size: 11px; transition: all .15s;
+  }
+  .footer-btn:hover { border-color: var(--accent); color: var(--accent2); }
+  .footer-btn.danger:hover { border-color: var(--red); color: var(--red); }
+
+  .storage-info {
+    text-align: center; font-size: 10px; color: var(--text3); margin-top: 6px;
+  }
+  .storage-info span { color: var(--green); }
+
+  /* === MANAGE EXERCISES MODAL === */
+  .manage-overlay {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,.6);
+    z-index: 100; align-items: center; justify-content: center;
+  }
+  .manage-overlay.open { display: flex; }
+  .manage-box {
+    background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 20px; width: 480px; max-width: 95vw; max-height: 80vh; overflow-y: auto;
+  }
+  .manage-box h3 { font-size: 15px; font-weight: 600; color: var(--accent2); margin-bottom: 12px; }
+  .manage-item {
+    display: flex; align-items: center; gap: 8px; margin-bottom: 4px;
+    padding: 5px 8px; background: var(--bg3); border-radius: var(--radius-sm); font-size: 13px;
+  }
+  .manage-item .ex-name { flex: 1; }
+  .manage-item .ring-badge {
+    font-size: 10px; color: var(--orange); background: rgba(245,166,35,.12);
+    padding: 1px 6px; border-radius: 8px; font-weight: 600;
+  }
+  /* Sets count −/+ controls in manage panel */
+  .manage-item .sets-cfg {
+    display: flex; align-items: center; gap: 3px;
+    font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text2);
+  }
+  .manage-item .sets-cfg button {
+    width: 20px; height: 20px; border-radius: 4px; border: 1px solid var(--border);
+    background: var(--bg2); color: var(--text2); cursor: pointer;
+    font-size: 12px; display: flex; align-items: center; justify-content: center;
+    transition: all .15s; font-family: inherit;
+  }
+  .manage-item .sets-cfg button:hover { border-color: var(--accent); color: var(--accent2); }
+  .manage-item .sets-cfg .sets-num { width: 18px; text-align: center; font-weight: 600; }
+  .manage-item .mastery-cfg {
+    display: flex; align-items: center; gap: 3px;
+    font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text2);
+  }
+  .manage-item .mastery-cfg input {
+    width: 36px; text-align: center; font-family: inherit; font-size: 11px; font-weight: 600;
+    background: var(--bg2); border: 1px solid var(--border); color: var(--text);
+    border-radius: 4px; padding: 2px; outline: none;
+  }
+  .manage-item .mastery-cfg input:focus { border-color: var(--accent); }
+  .manage-item .mastery-cfg input::placeholder { color: var(--text3); }
+  .manage-item .del-btn {
+    background: none; border: none; color: var(--text3); cursor: pointer;
+    font-size: 14px; padding: 0 4px; transition: all .15s;
+  }
+  .manage-item .del-btn:hover { color: var(--red); }
+  .mastery-badge {
+    font-size: 10px; font-weight: 700; letter-spacing: .5px;
+    margin-top: 3px; padding: 2px 6px; border-radius: 4px; text-align: center;
+  }
+  .mastery-0 { color: var(--text3); font-size: 9px; }
+  .mastery-1 { color: var(--orange); font-size: 9px; }
+  .mastery-2 { color: #f5a623; font-size: 10px; font-weight: 700; background: rgba(245,166,35,.1); }
+  .mastery-3 {
+    color: #00ff88; font-size: 11px; font-weight: 700;
+    background: rgba(0,255,136,.12); border: 1px solid rgba(0,255,136,.25);
+    text-shadow: 0 0 8px rgba(0,255,136,.5);
+    animation: masteryPulse 2s ease-in-out infinite;
+  }
+  @keyframes masteryPulse {
+    0%, 100% { box-shadow: 0 0 4px rgba(0,255,136,.15); }
+    50% { box-shadow: 0 0 12px rgba(0,255,136,.35); }
+  }
+  .manage-add { display: flex; gap: 6px; margin-top: 10px; align-items: center; }
+  .manage-add input[type="text"] {
+    flex: 1; font-family: inherit; font-size: 13px; padding: 6px 10px;
+    background: var(--bg3); border: 1px solid var(--border); color: var(--text);
+    border-radius: var(--radius-sm); outline: none;
+  }
+  .manage-add input[type="text"]:focus { border-color: var(--accent); }
+  .manage-add label { font-size: 12px; color: var(--text2); cursor: pointer; white-space: nowrap; display: flex; align-items: center; gap: 3px; }
+  .manage-add input[type="checkbox"] { accent-color: var(--orange); cursor: pointer; }
+  .manage-add .add-btn {
+    background: var(--green); border: none; color: white; padding: 6px 14px;
+    border-radius: var(--radius-sm); cursor: pointer; font-family: inherit; font-weight: 600; font-size: 13px;
+  }
+  .manage-add .add-btn:hover { background: var(--green2); color: var(--bg); }
+  .manage-close {
+    margin-top: 12px; width: 100%; padding: 8px; background: var(--bg3);
+    border: 1px solid var(--border); color: var(--text); border-radius: var(--radius-sm);
+    cursor: pointer; font-family: inherit; font-size: 13px; font-weight: 500;
+  }
+  .manage-close:hover { border-color: var(--accent); color: var(--accent2); }
+  .manage-hint { font-size: 11px; color: var(--text3); margin-bottom: 10px; }
+
+  /* === CARDIO CELL — running + rucking inputs per day === */
+  .cardio-cell {
+    width: 110px; min-width: 110px; background: var(--bg2); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 6px 8px; display: flex;
+    flex-direction: column; justify-content: center; gap: 4px; flex-shrink: 0;
+  }
+  .cardio-cell:hover { border-color: var(--bg4); }
+  .cardio-row {
+    display: flex; align-items: center; gap: 4px;
+  }
+  .cardio-icon { font-size: 11px; width: 16px; text-align: center; flex-shrink: 0; }
+  .cardio-row input {
+    width: 100%; font-family: 'JetBrains Mono', monospace; font-size: 11px;
+    padding: 3px 4px; background: var(--bg3); border: 1px solid var(--border);
+    color: var(--text); border-radius: 4px; outline: none; text-align: center;
+    transition: border-color .15s; min-width: 0;
+  }
+  .cardio-row input:focus { border-color: var(--accent); }
+  .cardio-row input::placeholder { color: var(--text3); opacity: .4; font-size: 9px; }
+  .cardio-label { font-size: 8px; color: var(--text3); text-transform: uppercase; letter-spacing: .5px; }
+  .cardio-unit { font-size: 9px; color: var(--text3); flex-shrink: 0; }
+
+  /* === CALORIE CELL — weight, eaten summary, meals button === */
+  .calorie-cell {
+    width: 130px; min-width: 130px; background: var(--bg2); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 6px 8px; display: flex;
+    flex-direction: column; justify-content: center; gap: 3px; flex-shrink: 0;
+  }
+  .calorie-cell:hover { border-color: var(--bg4); }
+  .cal-summary-line {
+    display: flex; align-items: center; gap: 3px;
+    font-family: 'JetBrains Mono', monospace; font-size: 12px; line-height: 1.3;
+  }
+  .cal-summary-line .cal-icon { font-size: 12px; width: 16px; text-align: center; flex-shrink: 0; }
+  .cal-summary-line .cal-val { color: var(--text); font-weight: 600; }
+  .cal-summary-line .cal-unit { font-size: 10px; color: var(--text3); }
+  .cal-summary-line.clickable { cursor: pointer; border-radius: 3px; padding: 1px 2px; margin: 0 -2px; transition: background .15s; }
+  .cal-summary-line.clickable:hover { background: var(--bg3); }
+
+  .meal-add select {
+    font-family: inherit; font-size: 12px; padding: 6px 8px;
+    background: var(--bg3); border: 1px solid var(--border); color: var(--text);
+    border-radius: var(--radius-sm); outline: none; cursor: pointer;
+  }
+  .meal-add select:focus { border-color: var(--accent); }
+
+  /* === MEAL LOG MODAL === */
+  .meal-overlay {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,.6);
+    z-index: 100; align-items: center; justify-content: center;
+  }
+  .meal-overlay.open { display: flex; }
+  .meal-box {
+    background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 20px; width: 420px; max-width: 95vw; max-height: 80vh; overflow-y: auto;
+  }
+  .meal-box h3 { font-size: 15px; font-weight: 600; color: var(--accent2); margin-bottom: 4px; }
+  .meal-date { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text3); margin-bottom: 12px; }
+  .meal-item {
+    display: flex; align-items: center; gap: 8px; margin-bottom: 3px;
+    padding: 5px 8px; background: var(--bg3); border-radius: var(--radius-sm); font-size: 12px;
+  }
+  .meal-item .meal-name { flex: 1; color: var(--text); }
+  .meal-item .meal-kcal {
+    font-family: 'JetBrains Mono', monospace; color: var(--accent2); font-weight: 600; font-size: 11px;
+  }
+  .meal-item .meal-del {
+    background: none; border: none; color: var(--text3); cursor: pointer;
+    font-size: 14px; padding: 0 4px; transition: all .15s;
+  }
+  .meal-item .meal-del:hover { color: var(--red); }
+  .meal-add { display: flex; gap: 6px; margin-top: 10px; }
+  .meal-add input {
+    font-family: inherit; font-size: 12px; padding: 6px 8px;
+    background: var(--bg3); border: 1px solid var(--border); color: var(--text);
+    border-radius: var(--radius-sm); outline: none;
+  }
+  .meal-add input:focus { border-color: var(--accent); }
+  .meal-add .meal-name-inp { flex: 1; }
+  .meal-add .meal-kcal-inp { width: 70px; text-align: center; font-family: 'JetBrains Mono', monospace; }
+  .meal-add .meal-add-btn {
+    background: var(--green); border: none; color: white; padding: 6px 12px;
+    border-radius: var(--radius-sm); cursor: pointer; font-family: inherit; font-weight: 600; font-size: 12px;
+  }
+  .meal-add .meal-add-btn:hover { background: var(--green2); color: var(--bg); }
+  .meal-totals {
+    margin-top: 12px; padding: 10px; background: var(--bg3); border-radius: var(--radius-sm);
+  }
+  .meal-total-line {
+    display: flex; justify-content: space-between; padding: 2px 0;
+    font-family: 'JetBrains Mono', monospace; font-size: 11px;
+  }
+  .meal-total-line .label { color: var(--text3); }
+  .meal-total-line .value { color: var(--text); }
+  .meal-total-line.total { font-weight: 600; border-top: 1px solid var(--border); padding-top: 4px; margin-top: 4px; }
+
+  /* Hidden file input for JSON import */
+  #fileInput { display: none; }
+
+  /* === CHARTS MODAL === */
+  .charts-overlay {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,.6);
+    z-index: 100; align-items: center; justify-content: center;
+  }
+  .charts-overlay.open { display: flex; }
+  .charts-box {
+    background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 20px; width: 800px; max-width: 95vw; max-height: 90vh; overflow-y: auto;
+  }
+  .charts-box h3 { font-size: 15px; font-weight: 600; color: var(--accent2); margin-bottom: 12px; }
+  .chart-range-btns {
+    display: flex; gap: 6px; margin-bottom: 16px; flex-wrap: wrap;
+  }
+  .chart-range-btn {
+    background: var(--bg3); border: 1px solid var(--border); color: var(--text3);
+    padding: 4px 12px; border-radius: var(--radius-sm); cursor: pointer;
+    font-family: inherit; font-size: 11px; transition: all .15s;
+  }
+  .chart-range-btn:hover { border-color: var(--accent); color: var(--accent2); }
+  .chart-range-btn.active { background: var(--accent); border-color: var(--accent); color: white; font-weight: 600; }
+  .chart-canvas-wrap {
+    margin-bottom: 12px;
+  }
+  .chart-canvas-wrap canvas {
+    width: 100%; height: 320px; border-radius: var(--radius-sm);
+    background: var(--bg); border: 1px solid var(--border);
+  }
+  .chart-legend {
+    display: flex; gap: 16px; justify-content: center; margin-bottom: 12px;
+  }
+  .chart-legend-item {
+    display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--text2);
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .chart-legend-dot {
+    width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0;
+  }
+  .chart-no-data {
+    height: 320px; display: flex; align-items: center; justify-content: center;
+    background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm);
+    color: var(--text3); font-size: 12px;
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <!-- === HEADER === -->
+  <div class="header">
+    <h1>Workout Log</h1>
+    <div class="sub">Tempo: 2-1-2-1 · Rest: 2-3 min (sets) / 5 min (exercises)</div>
+    <a href="https://www.hybridcalisthenics.com/programs" target="_blank">Program: Hybrid Calisthenics</a>
+  </div>
+
+  <!-- === WEEK NAVIGATION === -->
+  <div class="week-nav">
+    <button onclick="changeWeek(-1)">← Previous</button>
+    <span class="week-label" id="weekLabel"></span>
+    <button onclick="changeWeek(1)">Next →</button>
+    <button class="today-btn" onclick="goToday()">Today</button>
+  </div>
+
+  <!-- === MAIN GRID — 7 day rows rendered by render() === -->
+  <div id="planGrid"></div>
+
+  <!-- === FOOTER — action buttons === -->
+  <div class="footer">
+    <div class="footer-right">
+      <button class="footer-btn" onclick="openCharts()">Charts</button>
+      <button class="footer-btn" onclick="openManage()">Manage exercises</button>
+      <button class="footer-btn" onclick="exportJSON()">Export backup</button>
+      <button class="footer-btn" onclick="document.getElementById('fileInput').click()">Import backup</button>
+      <button class="footer-btn" onclick="exportCSV()">Export CSV</button>
+      <button class="footer-btn danger" onclick="clearAllData()">Delete all</button>
+    </div>
+  </div>
+
+  <div class="storage-info">
+    <span>●</span> All changes saved instantly · Cloud: <span id="syncStatus" style="font-weight:600">loading...</span>
+  </div>
+
+  <!-- Hidden file picker for import -->
+  <input type="file" id="fileInput" accept=".json" onchange="importJSON(event)">
+</div>
+
+<!-- === MANAGE EXERCISES MODAL — opened via "Manage exercises" button === -->
+<div class="manage-overlay" id="manageOverlay" onclick="if(event.target===this)closeManage()">
+  <div class="manage-box">
+    <h3>Manage exercises</h3>
+    <div class="manage-hint">Use − / + to set number of sets per exercise. Goal = reps to master before progressing.</div>
+    <div id="manageList"></div>
+    <div class="manage-add">
+      <input type="text" id="newExName" placeholder="New exercise..." onkeydown="if(event.key==='Enter')addExercise()">
+      <label><input type="checkbox" id="newExRings"> ⊙</label>
+      <input type="number" id="newExMastery" min="0" max="999" placeholder="Goal" style="width:50px;font-family:inherit;font-size:12px;padding:5px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:var(--radius-sm);outline:none;" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
+      <button class="add-btn" onclick="addExercise()">Add</button>
+    </div>
+    <button class="manage-close" onclick="closeManage()">Close</button>
+  </div>
+</div>
+
+<!-- === MEAL LOG MODAL === -->
+<div class="meal-overlay" id="mealOverlay" onclick="if(event.target===this)closeMeals()">
+  <div class="meal-box">
+    <h3>Meals</h3>
+    <div class="meal-date" id="mealDate"></div>
+    <div id="mealList"></div>
+    <div class="meal-add">
+      <input type="text" class="meal-name-inp" id="mealNameInp" placeholder="Meal name..." list="mealSuggestions" autocomplete="off" oninput="autofillMealKcal()" onkeydown="if(event.key==='Enter')document.getElementById('mealKcalInp').focus()">
+      <datalist id="mealSuggestions"></datalist>
+      <input type="text" class="meal-kcal-inp" id="mealKcalInp" placeholder="kCal" onkeydown="if(event.key==='Enter')addMeal()">
+      <button class="meal-add-btn" onclick="addMeal()">Add</button>
+    </div>
+    <div class="meal-totals" id="mealTotals"></div>
+    <button class="manage-close" onclick="closeMeals()">Close</button>
+  </div>
+</div>
+
+<!-- === ACTIVITIES MODAL === -->
+<div class="meal-overlay" id="actOverlay" onclick="if(event.target===this)closeActivities()">
+  <div class="meal-box">
+    <h3>Activities</h3>
+    <div class="meal-date" id="actDate"></div>
+    <div id="actList"></div>
+    <div class="meal-add">
+      <select id="actType" onchange="toggleActKg()"></select>
+      <input type="text" class="meal-kcal-inp" id="actKm" placeholder="km" style="width:60px" onkeydown="if(event.key==='Enter')document.getElementById('actMin').focus()">
+      <input type="text" class="meal-kcal-inp" id="actMin" placeholder="min" style="width:60px" onkeydown="if(event.key==='Enter'){if(document.getElementById('actKg').style.display!=='none')document.getElementById('actKg').focus();else addActivity();}">
+      <input type="text" class="meal-kcal-inp" id="actKg" placeholder="kg" style="width:60px;display:none" onkeydown="if(event.key==='Enter')addActivity()">
+      <button class="meal-add-btn" onclick="addActivity()">Add</button>
+    </div>
+    <div class="meal-totals" id="actTotals"></div>
+    <button class="manage-close" onclick="closeActivities()">Close</button>
+  </div>
+</div>
+
+<!-- === CHARTS MODAL === -->
+<div class="charts-overlay" id="chartsOverlay" onclick="if(event.target===this)closeCharts()">
+  <div class="charts-box">
+    <h3>Charts</h3>
+    <div class="chart-range-btns" id="chartRangeBtns">
+      <button class="chart-range-btn" onclick="setChartRange(30)">30 days</button>
+      <button class="chart-range-btn active" onclick="setChartRange(90)">90 days</button>
+      <button class="chart-range-btn" onclick="setChartRange(180)">6 months</button>
+      <button class="chart-range-btn" onclick="setChartRange(365)">1 year</button>
+      <button class="chart-range-btn" onclick="setChartRange(0)">All</button>
+    </div>
+    <div class="chart-legend" id="chartLegend"></div>
+    <div class="chart-canvas-wrap">
+      <canvas id="chartMain"></canvas>
+    </div>
+    <button class="manage-close" onclick="closeCharts()">Close</button>
+  </div>
+</div>
+
+<script>
+// ============================================================================
+// CONSTANTS
+// ============================================================================
+
+/** localStorage key where all data is stored */
+const LS = 'workout_log';
+
+/** Cloud sync via Cloudflare Worker (keeps API key server-side) */
+const WORKER_URL = 'https://workout-sync.milan-kotus.workers.dev';
+
+const DAY_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+const DAY_SHORT = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
+/** Neutral color for all day labels */
+const DAY_COLOR = '#3a3f50';
+
+/**
+ * DEFAULT WEEKLY PLAN
+ * Maps day-of-week (0=Sun, 1=Mon, ..., 6=Sat) to an array of exercise names.
+ * These auto-populate when a day is opened for the first time.
+ * Once a day has any data, this plan is NOT re-applied.
+ * To change the default workout schedule, edit the arrays below.
+ */
+const PLAN = {
+  1: ['Horiz. Pullups', 'Dips / Hold', 'Straight Bridges'],           // Monday
+  2: ['Biceps curls', 'Advanced Incline Pushups', 'Knee Raises'],      // Tuesday
+  3: ['Horiz. Pullups', 'Straight Bridges', 'Squats'],                 // Wednesday
+  4: ['Dips / Hold', 'Advanced Incline Pushups', 'Knee Raises'],       // Thursday
+  5: ['Pullups', 'Biceps curls', 'Straight Bridges'],                  // Friday
+  6: ['Knee Raises', 'Advanced Incline Pushups', 'Squats'],            // Saturday
+  0: []                                                                 // Sunday (empty — normal day, user adds manually)
+};
+
+// ============================================================================
+// STATE INITIALIZATION
+// ============================================================================
+
+const today = new Date(); today.setHours(0,0,0,0);
+
+/** weekStart = Monday of the currently displayed week */
+let weekStart = getMonday(new Date(today));
+
+/**
+ * Returns the default state object used when no data exists in localStorage.
+ * exercises[].sets = number of set input fields (1-6), NOT the set data.
+ * The actual recorded set data lives in state.days[dateKey].exercises[].sets (array of strings).
+ */
+function defaultState() {
+  return {
+    exercises: [
+      { name: 'Horiz. Pullups',          rings: true,  sets: 3 },
+      { name: 'Pullups',                 rings: true,  sets: 3 },
+      { name: 'Dips / Hold',             rings: true,  sets: 3 },
+      { name: 'Biceps curls',            rings: true,  sets: 3 },
+      { name: 'Advanced Incline Pushups', rings: false, sets: 3 },
+      { name: 'Straight Bridges',        rings: false, sets: 3 },
+      { name: 'Squats',                  rings: false, sets: 3 },
+      { name: 'Knee Raises',             rings: false, sets: 3 },
+    ],
+    days: {}
+  };
+}
+
+/** Load state from localStorage, or use defaults */
+let state;
+try {
+  const raw = localStorage.getItem(LS);
+  if (raw) { state = JSON.parse(raw); migrate(); }
+  else { state = defaultState(); }
+} catch(e) { state = defaultState(); }
+
+/**
+ * MIGRATION — renames old exercise names from previous versions of this file.
+ * Also ensures every exercise has a valid 'sets' count (defaults to 3).
+ * Safe to run multiple times.
+ */
+function migrate() {
+  const renames = {
+    'kliky': 'Advanced Incline Pushups',
+    'Kliky': 'Advanced Incline Pushups',
+    'Hindu kliky': 'Advanced Incline Pushups',
+    'Bridges': 'Straight Bridges',
+    'Leg Raises': 'Knee Raises'
+  };
+  // Rename in exercise list + ensure sets config
+  state.exercises = (state.exercises || []).map(e => {
+    if (renames[e.name]) e.name = renames[e.name];
+    if (!e.sets || e.sets < 1) e.sets = 3;
+    return e;
+  });
+  // Deduplicate exercises by name
+  const seen = new Set();
+  state.exercises = state.exercises.filter(e => {
+    if (seen.has(e.name)) return false;
+    seen.add(e.name); return true;
+  });
+  // Rename in day log data
+  Object.values(state.days || {}).forEach(d =>
+    (d.exercises || []).forEach(ex => {
+      if (renames[ex.name]) ex.name = renames[ex.name];
+    })
+  );
+  // Migrate old running/rucking fields to activities array
+  Object.values(state.days || {}).forEach(d => {
+    if (d.running || d.rucking_km) {
+      if (!d.activities) d.activities = [];
+      if (d.running && parseFloat(d.running) > 0) {
+        d.activities.push({ type: 'running', km: d.running, min: d.running_min || '' });
+      }
+      if (d.rucking_km && parseFloat(d.rucking_km) > 0) {
+        const rkm = parseFloat(d.rucking_km);
+        d.activities.push({ type: 'rucking', km: d.rucking_km, min: String(Math.round(rkm / 6 * 60)), kg: d.rucking_kg || '' });
+      }
+      delete d.running; delete d.running_min; delete d.rucking_km; delete d.rucking_kg;
+    }
+  });
+}
+
+// ============================================================================
+// STORAGE
+// ============================================================================
+
+/** Instantly persist state to localStorage + debounced cloud save. */
+let _cloudTimer = null;
+let _skipCloud = false;
+
+function getPin() {
+  let pin = localStorage.getItem('workout_pin');
+  if (!pin) {
+    pin = prompt('Enter sync PIN:');
+    if (pin) localStorage.setItem('workout_pin', pin);
+  }
+  return pin;
+}
+
+function save() {
+  localStorage.setItem(LS, JSON.stringify(state));
+  if (!_skipCloud) cloudSave();
+}
+
+function cloudSave() {
+  clearTimeout(_cloudTimer);
+  const pin = getPin();
+  if (!pin) return;
+  setSyncStatus('pending');
+  _cloudTimer = setTimeout(() => {
+    setSyncStatus('syncing');
+    fetch(WORKER_URL, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + pin
+      },
+      body: JSON.stringify(state)
+    })
+    .then(r => {
+      if (r.status === 401) { localStorage.removeItem('workout_pin'); setSyncStatus('wrong PIN'); return; }
+      setSyncStatus(r.ok ? 'synced' : 'error');
+    })
+    .catch(() => setSyncStatus('error'));
+  }, 3000);
+}
+
+function cloudLoad() {
+  const pin = getPin();
+  if (!pin) { setSyncStatus('no PIN'); return; }
+  setSyncStatus('syncing');
+  fetch(WORKER_URL, {
+    headers: { 'Authorization': 'Bearer ' + pin }
+  })
+  .then(r => {
+    if (r.status === 401) { localStorage.removeItem('workout_pin'); setSyncStatus('wrong PIN'); return null; }
+    if (!r.ok) throw new Error();
+    return r.json();
+  })
+  .then(record => {
+    if (!record) return;
+    if (record.days && Object.keys(record.days).length > 0) {
+      state = record;
+      migrate();
+      _skipCloud = true;
+      localStorage.setItem(LS, JSON.stringify(state));
+      _skipCloud = false;
+      render();
+    }
+    setSyncStatus('synced');
+  })
+  .catch(() => setSyncStatus('error'));
+}
+
+function setSyncStatus(status) {
+  const el = document.getElementById('syncStatus');
+  if (!el) return;
+  if (status === 'syncing')     { el.textContent = 'syncing...'; el.style.color = 'var(--orange)'; }
+  else if (status === 'pending'){ el.textContent = 'saving...';  el.style.color = 'var(--text3)'; }
+  else if (status === 'synced') { el.textContent = 'synced';     el.style.color = 'var(--green)'; }
+  else if (status === 'wrong PIN') { el.textContent = 'wrong PIN (refresh)'; el.style.color = 'var(--red)'; }
+  else if (status === 'no PIN') { el.textContent = 'no PIN';     el.style.color = 'var(--text3)'; }
+  else                          { el.textContent = 'offline';    el.style.color = 'var(--red)'; }
+}
+
+// ============================================================================
+// UTILITY FUNCTIONS
+// ============================================================================
+
+/** Returns configured number of sets for an exercise (from master exercise list) */
+function getSetCount(name) {
+  const ex = state.exercises.find(e => e.name === name);
+  return ex && ex.sets ? ex.sets : 3;
+}
+
+/**
+ * Pads or trims a sets data array to match the configured set count.
+ * E.g., if exercise is configured for 3 sets but array has 2 entries, adds one empty string.
+ */
+function normalizeSets(data, name) {
+  const n = getSetCount(name);
+  if (!data || !Array.isArray(data)) data = [];
+  while (data.length < n) data.push('');
+  if (data.length > n) data = data.slice(0, n);
+  return data;
+}
+
+/** Date → "YYYY-MM-DD" string key for state.days */
+function dk(d) {
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+}
+
+/** Returns the Monday of the week containing date d */
+function getMonday(d) {
+  const dd = new Date(d);
+  const day = dd.getDay();
+  dd.setDate(dd.getDate() - day + (day === 0 ? -6 : 1));
+  dd.setHours(0,0,0,0);
+  return dd;
+}
+
+function same(a, b) {
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+}
+
+/** Date → "DD.MM.YYYY" for display */
+function fmt(d) {
+  return String(d.getDate()).padStart(2,'0') + '.' + String(d.getMonth()+1).padStart(2,'0') + '.' + d.getFullYear();
+}
+
+/**
+ * Get or create day data for a given date.
+ * If the day has no exercises yet, seeds it from PLAN.
+ */
+function ensureDay(d) {
+  const k = dk(d);
+  if (!state.days[k]) state.days[k] = { exercises: [] };
+  const dd = state.days[k];
+  const dow = d.getDay();
+  const p = PLAN[dow] || [];
+  if (dd.exercises.length === 0 && p.length > 0) {
+    dd.exercises = p.map(n => ({ name: n, sets: normalizeSets([], n) }));
+    save();
+  }
+  return dd;
+}
+
+/**
+ * Look up recorded sets for a given exercise on the same weekday, offset by N weeks.
+ * offset=-1 means "same day last week", offset=-2 means "two weeks ago".
+ * Returns the sets array or null if no data found.
+ */
+function getSets(d, name, offset) {
+  const t = new Date(d);
+  t.setDate(t.getDate() + offset * 7);
+  const dd = state.days[dk(t)];
+  if (!dd || !dd.exercises) return null;
+  const ex = dd.exercises.find(e => e.name === name);
+  if (!ex || !ex.sets || !ex.sets.some(s => s)) return null;
+  return ex.sets;
+}
+
+/** Format a sets array as "26 · 23 · 20" for display. Returns null if no data. */
+function fmtSets(s) {
+  if (!s) return null;
+  if (!s.some(v => v)) return null;
+  return s.map(v => v || '–').join(' · ');
+}
+
+/**
+ * Count consecutive sessions (most recent first, up to `upToDate`) where
+ * every set of the given exercise met the mastery goal.
+ * A "session" is any day where the exercise has at least one set filled.
+ * Days where the exercise wasn't logged are skipped (not a session).
+ * A session with data that doesn't meet the goal breaks the streak.
+ */
+function getMasteryStreak(exName, goal, numSets, upToDate) {
+  const limit = dk(upToDate);
+  const dates = Object.keys(state.days).filter(k => k <= limit).sort().reverse();
+  let streak = 0;
+  for (const k of dates) {
+    const dd = state.days[k];
+    if (!dd || !dd.exercises) continue;
+    const ex = dd.exercises.find(e => e.name === exName);
+    if (!ex || !ex.sets || !ex.sets.some(s => s)) continue;
+    // This is a session — check if all sets meet goal
+    const allMet = ex.sets.slice(0, numSets).every(s => s && parseInt(s) >= goal);
+    if (allMet) streak++;
+    else break;
+  }
+  return streak;
+}
+
+// ============================================================================
+// MEALS & ACTIVITIES
+// ============================================================================
+
+let mealModalDate = null;
+let actModalDate = null;
+
+/** Activity types with icons and required fields */
+const ACTIVITY_TYPES = [
+  { id: 'running', name: 'Running', icon: '\u{1F3C3}', fields: ['km', 'min'] },
+  { id: 'walking', name: 'Walking', icon: '\u{1F6B6}', fields: ['km', 'min'] },
+  { id: 'rucking', name: 'Rucking', icon: '\u{1F392}', fields: ['km', 'min', 'kg'] },
+  { id: 'bicycling', name: 'Bicycling', icon: '\u{1F6B4}', fields: ['km', 'min'] }
+];
+
+/** Sum of all meals for a day (kCal) */
+function calcDayEaten(dateKey) {
+  const day = state.days[dateKey];
+  if (!day || !day.meals) return 0;
+  return day.meals.reduce((sum, m) => sum + (parseFloat(m.kcal) || 0), 0);
+}
+
+// ============================================================================
+// RENDER — builds the entire week grid
+// ============================================================================
+
+function render() {
+  const grid = document.getElementById('planGrid');
+  grid.innerHTML = '';
+
+  // Update week label
+  const eow = new Date(weekStart);
+  eow.setDate(eow.getDate() + 6);
+  document.getElementById('weekLabel').textContent = 'Week  ' + fmt(weekStart) + ' — ' + fmt(eow);
+
+  // Render 7 day rows (Mon through Sun)
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(weekStart);
+    d.setDate(d.getDate() + i);
+    const dow = d.getDay();
+    const isToday = same(d, today);
+
+    // Day row container
+    const row = document.createElement('div');
+    row.className = 'day-row' + (isToday ? ' is-today' : '');
+
+    // Day label (left column)
+    const label = document.createElement('div');
+    label.className = 'day-label';
+    label.style.background = DAY_COLOR;
+    label.innerHTML =
+      '<div class="day-label-name">' + DAY_SHORT[dow] + '</div>' +
+      '<div class="day-label-date">' + fmt(d) + '</div>' +
+      (isToday ? '<div class="today-tag">TODAY</div>' : '');
+    row.appendChild(label);
+
+    // Day data setup
+    const cardioKey = dk(d);
+    if (!state.days[cardioKey]) state.days[cardioKey] = { exercises: [] };
+    const dayData = state.days[cardioKey];
+
+    // Calorie & tracking cell
+    const calCell = document.createElement('div');
+    calCell.className = 'calorie-cell';
+
+    // Weight row
+    const weightRow = document.createElement('div'); weightRow.className = 'cardio-row';
+    const weightIcon = document.createElement('span'); weightIcon.className = 'cardio-icon'; weightIcon.textContent = '\u{2696}';
+    const weightInp = document.createElement('input'); weightInp.type = 'text';
+    weightInp.placeholder = 'kg'; weightInp.value = dayData.weight || '';
+    weightInp.oninput = () => { state.days[cardioKey].weight = weightInp.value; save(); };
+    weightInp.onblur = () => render();
+    const weightUnit = document.createElement('span'); weightUnit.className = 'cardio-unit'; weightUnit.textContent = 'kg';
+    weightRow.appendChild(weightIcon); weightRow.appendChild(weightInp); weightRow.appendChild(weightUnit);
+    calCell.appendChild(weightRow);
+
+    // Waist row
+    const waistRow = document.createElement('div'); waistRow.className = 'cardio-row';
+    const waistIcon = document.createElement('span'); waistIcon.className = 'cardio-icon'; waistIcon.textContent = '\u{1F4CF}';
+    const waistInp = document.createElement('input'); waistInp.type = 'text';
+    waistInp.placeholder = 'cm'; waistInp.value = dayData.waist || '';
+    waistInp.oninput = () => { state.days[cardioKey].waist = waistInp.value; save(); };
+    const waistUnit = document.createElement('span'); waistUnit.className = 'cardio-unit'; waistUnit.textContent = 'cm';
+    waistRow.appendChild(waistIcon); waistRow.appendChild(waistInp); waistRow.appendChild(waistUnit);
+    calCell.appendChild(waistRow);
+
+    // Activities line (clickable)
+    const actLine = document.createElement('div'); actLine.className = 'cal-summary-line clickable';
+    const actCount = (dayData.activities || []).length;
+    actLine.innerHTML = '<span class="cal-icon">\u{1F3C3}</span><span class="cal-val">' + (actCount ? actCount + ' activit' + (actCount > 1 ? 'ies' : 'y') : '+ Activity') + '</span>';
+    ((k) => { actLine.onclick = () => openActivities(k); })(cardioKey);
+    calCell.appendChild(actLine);
+
+    // Calories eaten
+    const eaten = calcDayEaten(cardioKey);
+
+    const eatLine = document.createElement('div'); eatLine.className = 'cal-summary-line clickable';
+    eatLine.innerHTML = '<span class="cal-icon">\u{1F37D}\u{FE0F}</span><span class="cal-val">' + eaten + '</span><span class="cal-unit">kCal</span>';
+    ((k) => { eatLine.onclick = () => openMeals(k); })(cardioKey);
+    calCell.appendChild(eatLine);
+
+    row.appendChild(calCell);
+
+    // Exercise cells
+    const exRow = document.createElement('div');
+    exRow.className = 'exercises-row';
+
+    const dd = ensureDay(d);
+    const p = PLAN[dow] || [];
+    if (dd.exercises.length === 0 && p.length > 0) {
+      dd.exercises = p.map(n => ({ name: n, sets: normalizeSets([], n) }));
+    }
+    for (let ei = 0; ei < dd.exercises.length; ei++) {
+      exRow.appendChild(cell(d, dd, ei));
+    }
+
+    // +/− buttons for adding/removing exercises (max 8 per day)
+    const btns = document.createElement('div');
+    btns.className = 'add-ex-cell';
+    if (dd.exercises.length < 8) {
+      const ab = document.createElement('button');
+      ab.className = 'add-ex-btn'; ab.textContent = '+';
+      const capturedDate = new Date(d);
+      ab.onclick = () => {
+        ensureDay(capturedDate).exercises.push({ name: '', sets: ['','',''] });
+        save(); render();
+      };
+      btns.appendChild(ab);
+    }
+    if (dd.exercises.length > 1) {
+      const rb = document.createElement('button');
+      rb.className = 'rm-ex-btn'; rb.textContent = '−';
+      const capturedDate = new Date(d);
+      rb.onclick = () => {
+        ensureDay(capturedDate).exercises.pop();
+        save(); render();
+      };
+      btns.appendChild(rb);
+    }
+    exRow.appendChild(btns);
+
+    row.appendChild(exRow);
+    grid.appendChild(row);
+  }
+}
+
+/**
+ * Creates a single exercise cell for a given day and exercise index.
+ * Contains: dropdown, history lines (-2w, -1w, now), and set input fields.
+ */
+function cell(d, dd, ei) {
+  const ex = dd.exercises[ei];
+  const key = dk(d);
+  const c = document.createElement('div');
+  c.className = 'exercise-cell';
+
+  // === EXERCISE DROPDOWN ===
+  const sel = document.createElement('select');
+  sel.innerHTML = '<option value="">— exercise —</option>';
+  state.exercises.forEach(e => {
+    const o = document.createElement('option');
+    o.value = e.name;
+    o.textContent = e.name + (e.rings ? ' ⊙' : '');
+    if (e.name === ex.name) o.selected = true;
+    sel.appendChild(o);
+  });
+  sel.onchange = () => {
+    dd.exercises[ei].name = sel.value;
+    // Resize sets array to match new exercise's configured set count
+    dd.exercises[ei].sets = normalizeSets(dd.exercises[ei].sets, sel.value);
+    save(); render();
+  };
+  c.appendChild(sel);
+
+  // === HISTORY LINES (-2w, -1w, now) ===
+  if (ex.name) {
+    const w2 = getSets(d, ex.name, -2);  // 2 weeks ago
+    const w1 = getSets(d, ex.name, -1);  // 1 week ago
+    const tw = ex.sets && ex.sets.some(s => s) ? ex.sets : null;  // this week (current data)
+
+    const l2 = document.createElement('div'); l2.className = 'wk-line';
+    l2.innerHTML = '<span class="wk-label">-2w:</span>' +
+      (w2 && fmtSets(w2) ? '<span class="wk-val">' + fmtSets(w2) + '</span>' : '<span class="wk-none">–</span>');
+    c.appendChild(l2);
+
+    const l1 = document.createElement('div'); l1.className = 'wk-line';
+    l1.innerHTML = '<span class="wk-label">-1w:</span>' +
+      (w1 && fmtSets(w1) ? '<span class="wk-val">' + fmtSets(w1) + '</span>' : '<span class="wk-none">–</span>');
+    c.appendChild(l1);
+
+    // "now" line only shown if current week has data
+    if (tw && fmtSets(tw)) {
+      const lt = document.createElement('div'); lt.className = 'wk-line';
+      lt.innerHTML = '<span class="wk-label">now:</span><span class="wk-val cur">' + fmtSets(tw) + '</span>';
+      c.appendChild(lt);
+    }
+  } else {
+    // No exercise selected — show empty history placeholders
+    ['-2w:', '-1w:'].forEach(lbl => {
+      const l = document.createElement('div'); l.className = 'wk-line';
+      l.innerHTML = '<span class="wk-label">' + lbl + '</span><span class="wk-none">–</span>';
+      c.appendChild(l);
+    });
+  }
+
+  // === SET INPUT FIELDS ===
+  // Number of inputs determined by exercise's 'sets' config (1-6)
+  const numSets = ex.name ? getSetCount(ex.name) : 3;
+  ex.sets = normalizeSets(ex.sets, ex.name);
+
+  const sr = document.createElement('div'); sr.className = 'sets-row';
+  for (let si = 0; si < numSets; si++) {
+    const inp = document.createElement('input');
+    inp.type = 'text';
+    inp.placeholder = 'S' + (si + 1);
+    inp.value = ex.sets[si] || '';
+    // Save instantly on every keystroke
+    inp.oninput = () => {
+      state.days[key].exercises[ei].sets[si] = inp.value;
+      save();
+    };
+    sr.appendChild(inp);
+  }
+  c.appendChild(sr);
+
+  // === MASTERY INDICATOR ===
+  if (ex.name) {
+    const exDef = state.exercises.find(e => e.name === ex.name);
+    const goal = exDef && exDef.masteryReps;
+    if (goal > 0) {
+      const streak = Math.min(getMasteryStreak(ex.name, goal, numSets, d), 3);
+      const badge = document.createElement('div');
+      badge.className = 'mastery-badge mastery-' + streak;
+      if (streak >= 3) {
+        badge.textContent = '\u2605 MASTERED \u2605';
+      } else if (streak === 2) {
+        badge.textContent = '\u2191 ' + goal + ' reps — ' + streak + '/3';
+      } else if (streak === 1) {
+        badge.textContent = goal + ' reps — ' + streak + '/3';
+      } else {
+        badge.textContent = 'goal: ' + goal + ' reps';
+      }
+      c.appendChild(badge);
+    }
+  }
+
+  return c;
+}
+
+// ============================================================================
+// WEEK NAVIGATION
+// ============================================================================
+
+function changeWeek(delta) {
+  weekStart.setDate(weekStart.getDate() + delta * 7);
+  render();
+}
+
+function goToday() {
+  weekStart = getMonday(new Date(today));
+  render();
+}
+
+// ============================================================================
+// MANAGE EXERCISES MODAL
+// ============================================================================
+
+function openManage() {
+  document.getElementById('manageOverlay').classList.add('open');
+  renderManage();
+}
+
+function closeManage() {
+  document.getElementById('manageOverlay').classList.remove('open');
+}
+
+/** Renders the exercise list inside the manage modal */
+function renderManage() {
+  const list = document.getElementById('manageList');
+  list.innerHTML = '';
+
+  state.exercises.forEach((ex, i) => {
+    const item = document.createElement('div'); item.className = 'manage-item';
+
+    // Exercise name
+    const name = document.createElement('span');
+    name.className = 'ex-name'; name.textContent = ex.name;
+    item.appendChild(name);
+
+    // Rings badge
+    if (ex.rings) {
+      const b = document.createElement('span');
+      b.className = 'ring-badge'; b.textContent = '⊙';
+      item.appendChild(b);
+    }
+
+    // Sets count config (−  N  + sets)
+    const cfg = document.createElement('div'); cfg.className = 'sets-cfg';
+
+    const minus = document.createElement('button'); minus.textContent = '−';
+    minus.onclick = () => {
+      if (ex.sets > 1) { ex.sets--; save(); renderManage(); render(); }
+    };
+    cfg.appendChild(minus);
+
+    const num = document.createElement('span');
+    num.className = 'sets-num'; num.textContent = ex.sets || 3;
+    cfg.appendChild(num);
+
+    const plus = document.createElement('button'); plus.textContent = '+';
+    plus.onclick = () => {
+      if (ex.sets < 6) { ex.sets++; save(); renderManage(); render(); }
+    };
+    cfg.appendChild(plus);
+
+    const sLabel = document.createElement('span');
+    sLabel.style.cssText = 'font-size:10px;color:var(--text3);margin-left:1px;';
+    sLabel.textContent = 'sets';
+    cfg.appendChild(sLabel);
+
+    item.appendChild(cfg);
+
+    // Mastery goal config
+    const mcfg = document.createElement('div'); mcfg.className = 'mastery-cfg';
+    const mLabel = document.createElement('span');
+    mLabel.style.cssText = 'font-size:10px;color:var(--text3);';
+    mLabel.textContent = 'goal';
+    mcfg.appendChild(mLabel);
+    const mInput = document.createElement('input');
+    mInput.type = 'number'; mInput.min = 0; mInput.max = 999;
+    mInput.placeholder = '–';
+    mInput.value = ex.masteryReps || '';
+    mInput.onchange = () => {
+      ex.masteryReps = parseInt(mInput.value) || 0;
+      save(); render();
+    };
+    mcfg.appendChild(mInput);
+    item.appendChild(mcfg);
+
+    // Delete button
+    const del = document.createElement('button'); del.className = 'del-btn'; del.textContent = '×';
+    del.onclick = () => {
+      if (confirm('Remove "' + ex.name + '"?')) {
+        state.exercises.splice(i, 1); save(); renderManage(); render();
+      }
+    };
+    item.appendChild(del);
+
+    list.appendChild(item);
+  });
+}
+
+/** Add a new exercise from the input fields in the manage modal */
+function addExercise() {
+  const ni = document.getElementById('newExName');
+  const ri = document.getElementById('newExRings');
+  const mi = document.getElementById('newExMastery');
+  const name = ni.value.trim();
+  if (!name) return;
+  if (state.exercises.some(e => e.name.toLowerCase() === name.toLowerCase())) {
+    alert('Already exists.'); return;
+  }
+  state.exercises.push({ name, rings: ri.checked, sets: 3, masteryReps: parseInt(mi.value) || 0 });
+  save(); ni.value = ''; ri.checked = false; mi.value = '';
+  renderManage(); render();
+}
+
+// ============================================================================
+// MEAL LOG MODAL
+// ============================================================================
+
+function openMeals(dateKey) {
+  mealModalDate = dateKey;
+  document.getElementById('mealOverlay').classList.add('open');
+  buildMealSuggestions();
+  renderMeals();
+}
+
+function closeMeals() {
+  document.getElementById('mealOverlay').classList.remove('open');
+  mealModalDate = null;
+}
+
+function renderMeals() {
+  if (!mealModalDate) return;
+  if (!state.days[mealModalDate]) state.days[mealModalDate] = { exercises: [] };
+  const day = state.days[mealModalDate];
+  if (!day.meals) day.meals = [];
+
+  // Date header
+  const [y, m, d] = mealModalDate.split('-').map(Number);
+  const dt = new Date(y, m - 1, d);
+  document.getElementById('mealDate').textContent = DAY_NAMES[dt.getDay()] + ' ' + fmt(dt);
+
+  // Meal list
+  const list = document.getElementById('mealList');
+  list.innerHTML = '';
+  day.meals.forEach((meal, i) => {
+    const item = document.createElement('div'); item.className = 'meal-item';
+
+    const name = document.createElement('span'); name.className = 'meal-name'; name.textContent = meal.name;
+    name.style.cursor = 'pointer';
+    name.onclick = () => {
+      const inp = document.createElement('input'); inp.type = 'text'; inp.value = meal.name;
+      inp.className = 'meal-name-inp'; inp.style.cssText = 'flex:1;font-size:12px;padding:2px 6px';
+      inp.onblur = () => { meal.name = inp.value.trim() || meal.name; save(); renderMeals(); render(); };
+      inp.onkeydown = (e) => { if (e.key === 'Enter') inp.blur(); };
+      name.replaceWith(inp); inp.focus(); inp.select();
+    };
+
+    const kcal = document.createElement('span'); kcal.className = 'meal-kcal'; kcal.textContent = meal.kcal + ' kCal';
+    kcal.style.cursor = 'pointer';
+    kcal.onclick = () => {
+      const inp = document.createElement('input'); inp.type = 'text'; inp.value = meal.kcal;
+      inp.className = 'meal-kcal-inp'; inp.style.cssText = 'width:60px;text-align:center;font-size:12px;padding:2px 4px';
+      inp.onblur = () => { const v = parseInt(inp.value); if (v > 0) meal.kcal = v; save(); renderMeals(); render(); };
+      inp.onkeydown = (e) => { if (e.key === 'Enter') inp.blur(); };
+      kcal.replaceWith(inp); inp.focus(); inp.select();
+    };
+
+    const del = document.createElement('button'); del.className = 'meal-del'; del.textContent = '\u00D7';
+    del.onclick = () => { day.meals.splice(i, 1); save(); renderMeals(); render(); };
+    item.appendChild(name); item.appendChild(kcal); item.appendChild(del);
+    list.appendChild(item);
+  });
+
+  // Total eaten
+  const totals = document.getElementById('mealTotals');
+  totals.innerHTML = '';
+  const eaten = calcDayEaten(mealModalDate);
+  const totalLine = document.createElement('div'); totalLine.className = 'meal-total-line total';
+  totalLine.innerHTML = '<span class="label">Total eaten</span><span class="value">' + eaten + ' kCal</span>';
+  totals.appendChild(totalLine);
+}
+
+/** Build datalist options from the top 15 most frequent historical meals. */
+function buildMealSuggestions() {
+  const map = {};  // name (lowercase) → { name (original case), kcal, count }
+  for (const day of Object.values(state.days)) {
+    if (!day.meals) continue;
+    for (const m of day.meals) {
+      const key = m.name.toLowerCase();
+      if (map[key]) { map[key].count++; map[key].kcal = m.kcal; }
+      else map[key] = { name: m.name, kcal: m.kcal, count: 1 };
+    }
+  }
+  const top = Object.values(map).sort((a, b) => b.count - a.count).slice(0, 15);
+  const dl = document.getElementById('mealSuggestions');
+  dl.innerHTML = '';
+  for (const entry of top) {
+    const opt = document.createElement('option');
+    opt.value = entry.name;
+    opt.label = entry.name + ' — ' + entry.kcal + ' kCal';
+    dl.appendChild(opt);
+  }
+}
+
+/** When user picks a suggestion, auto-fill the kCal field. */
+function autofillMealKcal() {
+  const nameVal = document.getElementById('mealNameInp').value.trim().toLowerCase();
+  for (const day of Object.values(state.days)) {
+    if (!day.meals) continue;
+    for (const m of day.meals) {
+      if (m.name.toLowerCase() === nameVal) {
+        document.getElementById('mealKcalInp').value = m.kcal;
+        return;
+      }
+    }
+  }
+}
+
+function addMeal() {
+  if (!mealModalDate) return;
+  const nameInp = document.getElementById('mealNameInp');
+  const kcalInp = document.getElementById('mealKcalInp');
+  const name = nameInp.value.trim();
+  const kcal = parseInt(kcalInp.value);
+  if (!name || !kcal) return;
+  const day = state.days[mealModalDate];
+  if (!day.meals) day.meals = [];
+  day.meals.push({ name, kcal });
+  save();
+  nameInp.value = ''; kcalInp.value = '';
+  nameInp.focus();
+  buildMealSuggestions();
+  renderMeals(); render();
+}
+
+// ============================================================================
+// ACTIVITIES MODAL
+// ============================================================================
+
+function openActivities(dateKey) {
+  actModalDate = dateKey;
+  const sel = document.getElementById('actType');
+  sel.innerHTML = '';
+  ACTIVITY_TYPES.forEach(t => {
+    const o = document.createElement('option');
+    o.value = t.id; o.textContent = t.icon + ' ' + t.name;
+    sel.appendChild(o);
+  });
+  toggleActKg();
+  document.getElementById('actOverlay').classList.add('open');
+  renderActivities();
+}
+
+function closeActivities() {
+  document.getElementById('actOverlay').classList.remove('open');
+  actModalDate = null;
+}
+
+function toggleActKg() {
+  document.getElementById('actKg').style.display = document.getElementById('actType').value === 'rucking' ? '' : 'none';
+}
+
+function renderActivities() {
+  if (!actModalDate) return;
+  if (!state.days[actModalDate]) state.days[actModalDate] = { exercises: [] };
+  const day = state.days[actModalDate];
+  if (!day.activities) day.activities = [];
+
+  const [y, m, d] = actModalDate.split('-').map(Number);
+  const dt = new Date(y, m - 1, d);
+  document.getElementById('actDate').textContent = DAY_NAMES[dt.getDay()] + ' ' + fmt(dt);
+
+  const list = document.getElementById('actList');
+  list.innerHTML = '';
+
+  day.activities.forEach((act, i) => {
+    const type = ACTIVITY_TYPES.find(t => t.id === act.type) || ACTIVITY_TYPES[0];
+    const item = document.createElement('div'); item.className = 'meal-item';
+    item.style.cssText = 'flex-wrap:wrap;gap:4px';
+
+    const label = document.createElement('span'); label.style.cssText = 'font-size:12px;color:var(--text);flex-shrink:0';
+    label.textContent = type.icon + ' ' + type.name;
+    item.appendChild(label);
+
+    const makeField = (val, unit, key) => {
+      const span = document.createElement('span');
+      span.style.cssText = 'font-family:"JetBrains Mono",monospace;font-size:11px;color:var(--accent2);cursor:pointer';
+      span.textContent = (val || '?') + ' ' + unit;
+      span.onclick = () => {
+        const inp = document.createElement('input'); inp.type = 'text'; inp.value = val || '';
+        inp.style.cssText = 'width:50px;text-align:center;font-size:11px;padding:2px 4px';
+        inp.className = 'meal-kcal-inp';
+        inp.onblur = () => { act[key] = inp.value.trim(); save(); renderActivities(); render(); };
+        inp.onkeydown = (e) => { if (e.key === 'Enter') inp.blur(); };
+        span.replaceWith(inp); inp.focus(); inp.select();
+      };
+      return span;
+    };
+
+    item.appendChild(makeField(act.km, 'km', 'km'));
+    item.appendChild(makeField(act.min, 'min', 'min'));
+    if (act.type === 'rucking') item.appendChild(makeField(act.kg, 'kg', 'kg'));
+
+    const del = document.createElement('button'); del.className = 'meal-del'; del.textContent = '\u00D7';
+    del.onclick = () => { day.activities.splice(i, 1); save(); renderActivities(); render(); };
+    item.appendChild(del);
+    list.appendChild(item);
+  });
+
+}
+
+function addActivity() {
+  if (!actModalDate) return;
+  const type = document.getElementById('actType').value;
+  const km = document.getElementById('actKm').value.trim();
+  const min = document.getElementById('actMin').value.trim();
+  const kg = document.getElementById('actKg').value.trim();
+  if (!km && !min) return;
+  const day = state.days[actModalDate];
+  if (!day.activities) day.activities = [];
+  const act = { type, km, min };
+  if (type === 'rucking') act.kg = kg;
+  day.activities.push(act);
+  save();
+  document.getElementById('actKm').value = '';
+  document.getElementById('actMin').value = '';
+  document.getElementById('actKg').value = '';
+  renderActivities(); render();
+}
+
+// ============================================================================
+// EXPORT / IMPORT
+// ============================================================================
+
+/** Download complete state as JSON file (full backup of ALL data) */
+function exportJSON() {
+  dl(new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' }),
+    'workout_log_' + dk(today) + '.json');
+}
+
+/** Download training log as CSV (semicolon-separated, UTF-8 with BOM) */
+function exportCSV() {
+  // Dynamic column count based on max sets across all exercises
+  let maxS = 3;
+  state.exercises.forEach(e => { if (e.sets > maxS) maxS = e.sets; });
+
+  let csv = 'Date;Day;Exercise;';
+  for (let i = 1; i <= maxS; i++) csv += 'Set' + i + ';';
+  csv = csv.slice(0, -1) + '\n';
+
+  Object.keys(state.days).sort().forEach(k => {
+    const day = state.days[k];
+    const p = k.split('-');
+    const d = new Date(+p[0], +p[1]-1, +p[2]);
+    (day.exercises || []).forEach(ex => {
+      if (!ex.name || !ex.sets || !ex.sets.some(s => s)) return;
+      let line = [k, DAY_NAMES[d.getDay()], ex.name];
+      for (let i = 0; i < maxS; i++) line.push(ex.sets[i] || '');
+      csv += line.join(';') + '\n';
+    });
+    // Activities
+    if (day.activities && day.activities.length) {
+      day.activities.forEach(act => {
+        const type = ACTIVITY_TYPES.find(t => t.id === act.type);
+        let desc = (act.km || '') + ' km / ' + (act.min || '') + ' min';
+        if (act.type === 'rucking' && act.kg) desc += ' / ' + act.kg + ' kg';
+        csv += [k, DAY_NAMES[d.getDay()], (type ? type.name : act.type), desc].join(';') + '\n';
+      });
+    }
+    if (day.weight) {
+      csv += [k, DAY_NAMES[d.getDay()], 'Weight', day.weight + ' kg'].join(';') + '\n';
+    }
+    if (day.waist) {
+      csv += [k, DAY_NAMES[d.getDay()], 'Waist', day.waist + ' cm'].join(';') + '\n';
+    }
+    if (day.meals && day.meals.length) {
+      day.meals.forEach(m => {
+        csv += [k, DAY_NAMES[d.getDay()], 'Meal: ' + m.name, m.kcal + ' kCal'].join(';') + '\n';
+      });
+    }
+  });
+  dl(new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' }),
+    'workout_log_' + dk(today) + '.csv');
+}
+
+/** Helper: trigger file download */
+function dl(b, f) {
+  const u = URL.createObjectURL(b);
+  const a = document.createElement('a');
+  a.href = u; a.download = f; a.click();
+  URL.revokeObjectURL(u);
+}
+
+/** Import JSON backup — replaces ALL data */
+function importJSON(e) {
+  const file = e.target.files[0]; if (!file) return;
+  const r = new FileReader();
+  r.onload = ev => {
+    try {
+      state = JSON.parse(ev.target.result);
+      migrate(); save(); render();
+      alert('Data imported successfully.');
+    } catch(err) { alert('Error: ' + err.message); }
+  };
+  r.readAsText(file);
+  e.target.value = '';  // Reset so same file can be re-imported
+}
+
+/** Delete all data (double confirmation) */
+function clearAllData() {
+  if (confirm('Delete ALL data?') && confirm('Are you sure? Export a backup first.')) {
+    state = defaultState(); save(); render();
+  }
+}
+
+// ============================================================================
+// CHARTS
+// ============================================================================
+
+let chartRangeDays = 90;
+
+function openCharts() {
+  document.getElementById('chartsOverlay').classList.add('open');
+  renderCharts();
+}
+
+function closeCharts() {
+  document.getElementById('chartsOverlay').classList.remove('open');
+}
+
+function setChartRange(days) {
+  chartRangeDays = days;
+  document.querySelectorAll('.chart-range-btn').forEach(b => b.classList.remove('active'));
+  event.target.classList.add('active');
+  renderCharts();
+}
+
+/**
+ * Gather time-series data from state.days.
+ * Returns sorted array of { date: Date, value: number } for the selected range.
+ */
+function gatherChartData(fieldOrFn) {
+  const cutoff = chartRangeDays > 0
+    ? new Date(today.getTime() - chartRangeDays * 86400000)
+    : null;
+  const points = [];
+  for (const [k, day] of Object.entries(state.days)) {
+    const [y, m, d] = k.split('-').map(Number);
+    const date = new Date(y, m - 1, d);
+    if (cutoff && date < cutoff) continue;
+    const val = typeof fieldOrFn === 'function' ? fieldOrFn(day, k) : parseFloat(day[fieldOrFn]);
+    if (val && val > 0) points.push({ date, value: val });
+  }
+  points.sort((a, b) => a.date - b.date);
+  return points;
+}
+
+/** Series definitions: field/function, label, unit, colors */
+const CHART_SERIES = [
+  { id: 'weight',   label: 'Weight',   unit: 'kg',   color: '#6c5ce7', light: '#a29bfe', field: 'weight' },
+  { id: 'waist',    label: 'Waist',    unit: 'cm',   color: '#00b894', light: '#55efc4', field: 'waist' },
+  { id: 'calories', label: 'Calories', unit: 'kCal', color: '#e17055', light: '#fab1a0', field: (day, k) => calcDayEaten(k) },
+];
+
+function renderCharts() {
+  // Build legend
+  const legend = document.getElementById('chartLegend');
+  legend.innerHTML = '';
+  CHART_SERIES.forEach(s => {
+    const item = document.createElement('div'); item.className = 'chart-legend-item';
+    const dot = document.createElement('span'); dot.className = 'chart-legend-dot'; dot.style.background = s.color;
+    const txt = document.createElement('span'); txt.textContent = s.label + ' (' + s.unit + ')';
+    item.appendChild(dot); item.appendChild(txt);
+    legend.appendChild(item);
+  });
+
+  // Gather data for each series
+  const allSeries = CHART_SERIES.map(s => ({
+    ...s,
+    data: gatherChartData(s.field),
+  }));
+
+  drawCombinedChart('chartMain', allSeries);
+}
+
+/**
+ * Draw multiple normalized line series on one canvas.
+ * Each series is independently scaled to [0,1] so different units overlay cleanly.
+ */
+function drawCombinedChart(canvasId, seriesList) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+
+  const hasData = seriesList.some(s => s.data.length > 0);
+  const wrap = canvas.parentElement;
+  const existing = wrap.querySelector('.chart-no-data');
+  if (!hasData) {
+    canvas.style.display = 'none';
+    if (!existing) {
+      const nd = document.createElement('div'); nd.className = 'chart-no-data';
+      nd.textContent = 'No data yet';
+      wrap.appendChild(nd);
+    }
+    return;
+  }
+  canvas.style.display = '';
+  if (existing) existing.remove();
+
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  const w = rect.width, h = rect.height;
+
+  const padL = 16, padR = 16, padT = 16, padB = 32;
+  const plotW = w - padL - padR;
+  const plotH = h - padT - padB;
+
+  // Global time range across all series
+  let globalMinT = Infinity, globalMaxT = -Infinity;
+  seriesList.forEach(s => s.data.forEach(p => {
+    const t = p.date.getTime();
+    if (t < globalMinT) globalMinT = t;
+    if (t > globalMaxT) globalMaxT = t;
+  }));
+  const rangeT = globalMaxT - globalMinT || 1;
+  const toX = (t) => padL + ((t - globalMinT) / rangeT) * plotW;
+
+  ctx.clearRect(0, 0, w, h);
+
+  // Horizontal grid lines (no value labels — scales differ per series)
+  const nGrid = 5;
+  ctx.strokeStyle = '#2f3340';
+  ctx.lineWidth = 0.5;
+  for (let i = 0; i <= nGrid; i++) {
+    const y = padT + plotH * (i / nGrid);
+    ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(w - padR, y); ctx.stroke();
+  }
+
+  // X-axis date labels: pick evenly spaced dates from global range
+  ctx.font = '10px "JetBrains Mono", monospace';
+  ctx.fillStyle = '#636879';
+  ctx.textAlign = 'center';
+  const maxLabels = Math.floor(plotW / 60);
+  for (let i = 0; i <= maxLabels; i++) {
+    const t = globalMinT + rangeT * (i / maxLabels);
+    const x = toX(t);
+    const d = new Date(t);
+    const label = String(d.getDate()).padStart(2, '0') + '.' + String(d.getMonth() + 1).padStart(2, '0');
+    ctx.fillText(label, x, h - padB + 16);
+    ctx.strokeStyle = '#2f3340';
+    ctx.beginPath(); ctx.moveTo(x, h - padB); ctx.lineTo(x, h - padB + 4); ctx.stroke();
+  }
+
+  // Draw each series (normalized independently)
+  seriesList.forEach(s => {
+    if (s.data.length === 0) return;
+
+    const vals = s.data.map(p => p.value);
+    let minV = Math.min(...vals), maxV = Math.max(...vals);
+    if (minV === maxV) { minV -= 1; maxV += 1; }
+    const rv = maxV - minV;
+    minV -= rv * 0.05; maxV += rv * 0.05;
+    const toY = (v) => padT + plotH - ((v - minV) / (maxV - minV)) * plotH;
+
+    // Line
+    ctx.strokeStyle = s.color;
+    ctx.lineWidth = 2;
+    ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+    ctx.beginPath();
+    s.data.forEach((p, i) => {
+      const x = toX(p.date.getTime()), y = toY(p.value);
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+
+    // Fill under curve
+    ctx.globalAlpha = 0.06;
+    ctx.fillStyle = s.color;
+    ctx.beginPath();
+    s.data.forEach((p, i) => {
+      const x = toX(p.date.getTime()), y = toY(p.value);
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    });
+    ctx.lineTo(toX(s.data[s.data.length - 1].date.getTime()), padT + plotH);
+    ctx.lineTo(toX(s.data[0].date.getTime()), padT + plotH);
+    ctx.closePath(); ctx.fill();
+    ctx.globalAlpha = 1;
+
+    // Data points
+    s.data.forEach(p => {
+      ctx.fillStyle = s.color;
+      ctx.beginPath();
+      ctx.arc(toX(p.date.getTime()), toY(p.value), 2.5, 0, Math.PI * 2);
+      ctx.fill();
+    });
+
+    // Last value annotation
+    const last = s.data[s.data.length - 1];
+    const lx = toX(last.date.getTime()), ly = toY(last.value);
+    ctx.fillStyle = s.light;
+    ctx.beginPath(); ctx.arc(lx, ly, 4.5, 0, Math.PI * 2); ctx.fill();
+    ctx.font = 'bold 11px "JetBrains Mono", monospace';
+    ctx.fillStyle = s.light;
+    ctx.textAlign = lx > w - 70 ? 'right' : 'left';
+    ctx.fillText(Math.round(last.value * 10) / 10 + ' ' + s.unit, lx + (lx > w - 70 ? -8 : 8), ly - 8);
+  });
+}
+
+// ============================================================================
+// SEED TODAY — pre-fills today with sample data (only runs once, on first use)
+// ============================================================================
+
+(function seedToday() {
+  // Only seed on very first use — skip if any day data already exists
+  if (Object.keys(state.days).length > 0) return;
+  // Sample data from first workout session
+  const k = dk(today);
+  state.days[k] = { exercises: [
+    { name: 'Horiz. Pullups',  sets: ['26', '23', '20'] },
+    { name: 'Dips / Hold',     sets: ['24', '16', '10'] },
+    { name: 'Straight Bridges', sets: ['30', '26', '23'] },
+  ]};
+  save();
+})();
+
+// ============================================================================
+// INITIAL RENDER
+// ============================================================================
+
+render();
+cloudLoad();
+</script>
+</body>
+</html>
