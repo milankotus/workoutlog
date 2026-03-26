@@ -504,6 +504,54 @@
     background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm);
     color: var(--text3); font-size: 12px;
   }
+
+  /* === MOBILE RESPONSIVE === */
+  @media (max-width: 600px) {
+    body { padding: 8px; }
+
+    .header h1 { font-size: 20px; }
+    .header .sub { font-size: 10px; }
+
+    .week-nav { gap: 6px; margin: 10px 0; flex-wrap: wrap; }
+    .week-nav button { padding: 6px 10px; font-size: 12px; }
+    .week-nav .week-label { min-width: auto; font-size: 12px; order: -1; width: 100%; }
+
+    .day-row {
+      flex-direction: column; gap: 4px; margin-bottom: 12px;
+      padding-bottom: 12px; border-bottom: 1px solid var(--border);
+    }
+    .day-row.is-today::before { left: -3px; right: -3px; top: -3px; bottom: -3px; }
+
+    .day-label {
+      width: 100%; min-width: 100%; flex-direction: row; gap: 8px;
+      padding: 6px 10px; border-radius: var(--radius-sm);
+    }
+    .day-label-name { font-size: 13px; }
+    .day-label-date { font-size: 11px; }
+    .day-label .today-tag { margin-top: 0; margin-left: 4px; }
+
+    .calorie-cell {
+      width: 100%; min-width: 100%; flex-direction: row; flex-wrap: wrap;
+      gap: 6px; padding: 8px;
+    }
+    .cardio-row { flex: 1 1 45%; }
+    .cal-summary-line { flex: 1 1 45%; }
+
+    .exercises-row { flex-direction: column; gap: 4px; }
+    .exercise-cell { flex: 1 1 auto; min-width: 100%; }
+
+    .add-ex-cell {
+      width: 100%; min-width: 100%; flex-direction: row;
+      justify-content: center; gap: 12px; padding: 4px 0;
+    }
+
+    .footer { justify-content: center; }
+    .footer-right { justify-content: center; }
+
+    .manage-box, .meal-box { width: 95vw; padding: 14px; }
+    .charts-box { width: 98vw; padding: 12px; }
+    .chart-canvas-wrap canvas { height: 220px; }
+  }
 </style>
 </head>
 <body>
