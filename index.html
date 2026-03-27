@@ -203,9 +203,9 @@
 
   /* === EXERCISE CELL — one per exercise: dropdown + history + set inputs === */
   .exercise-cell {
-    flex: 1 1 120px; background: var(--bg2); border: 1px solid var(--border);
-    border-radius: var(--radius); padding: 8px; display: flex;
-    flex-direction: column; min-width: 100px; transition: border-color .15s;
+    flex: 1 1 90px; background: var(--bg2); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 6px; display: flex;
+    flex-direction: column; min-width: 80px; transition: border-color .15s;
   }
   .exercise-cell:hover { border-color: var(--bg4); }
 
@@ -387,7 +387,7 @@
 
   /* === CALORIE CELL — weight, eaten summary, meals button === */
   .calorie-cell {
-    width: 130px; min-width: 130px; background: var(--bg2); border: 1px solid var(--border);
+    width: 170px; min-width: 170px; background: var(--bg2); border: 1px solid var(--border);
     border-radius: var(--radius); padding: 6px 8px; display: flex;
     flex-direction: column; justify-content: center; gap: 3px; flex-shrink: 0;
   }
@@ -399,6 +399,9 @@
   .cal-summary-line .cal-icon { font-size: 12px; width: 16px; text-align: center; flex-shrink: 0; }
   .cal-summary-line .cal-val { color: var(--text); font-weight: 600; }
   .cal-summary-line .cal-unit { font-size: 10px; color: var(--text3); }
+  .cal-summary-line .cal-goal { font-size: 10px; color: var(--text3); font-weight: 400; }
+  .cal-summary-line .cal-goal.over { color: var(--red); }
+  .cal-summary-line .cal-goal.met { color: var(--green); }
   .cal-summary-line.clickable { cursor: pointer; border-radius: 3px; padding: 1px 2px; margin: 0 -2px; transition: background .15s; }
   .cal-summary-line.clickable:hover { background: var(--bg3); }
 
@@ -1095,14 +1098,33 @@ function render() {
     const eaten = calcDayEaten(cardioKey);
     const protEaten = calcDayProtein(cardioKey);
 
+    const calGoal = state.goals && state.goals.calories || 0;
+    const protGoal = state.goals && state.goals.protein || 0;
+
     const eatLine = document.createElement('div'); eatLine.className = 'cal-summary-line clickable';
-    eatLine.innerHTML = '<span class="cal-icon">\u{1F37D}\u{FE0F}</span><span class="cal-val">' + eaten + '</span><span class="cal-unit">kCal</span>';
+    let eatHtml = '<span class="cal-icon">\u{1F37D}\u{FE0F}</span><span class="cal-val">' + eaten + '</span>';
+    if (calGoal > 0) {
+      const calLeft = calGoal - eaten;
+      const cls = calLeft <= 0 ? (calLeft === 0 ? 'met' : 'over') : (eaten >= calGoal * 0.9 ? 'met' : '');
+      eatHtml += '<span class="cal-goal ' + cls + '">/ ' + calGoal + ' kCal</span>';
+    } else {
+      eatHtml += '<span class="cal-unit">kCal</span>';
+    }
+    eatLine.innerHTML = eatHtml;
     ((k) => { eatLine.onclick = () => openMeals(k); })(cardioKey);
     calCell.appendChild(eatLine);
 
     // Protein eaten
     const protLine = document.createElement('div'); protLine.className = 'cal-summary-line clickable';
-    protLine.innerHTML = '<span class="cal-icon">\u{1F4AA}</span><span class="cal-val">' + protEaten + '</span><span class="cal-unit">g prot</span>';
+    let protHtml = '<span class="cal-icon">\u{1F4AA}</span><span class="cal-val">' + protEaten + '</span>';
+    if (protGoal > 0) {
+      const protLeft = protGoal - protEaten;
+      const cls = protLeft <= 0 ? (protLeft === 0 ? 'met' : 'over') : (protEaten >= protGoal * 0.9 ? 'met' : '');
+      protHtml += '<span class="cal-goal ' + cls + '">/ ' + protGoal + 'g</span>';
+    } else {
+      protHtml += '<span class="cal-unit">g prot</span>';
+    }
+    protLine.innerHTML = protHtml;
     ((k) => { protLine.onclick = () => openMeals(k); })(cardioKey);
     calCell.appendChild(protLine);
 
