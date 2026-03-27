@@ -40,8 +40,8 @@
           ],
           weight: "85",                   // Body weight in kg
           waist: "88",                    // Waist circumference in cm (body tracking)
-          meals: [                        // Meals eaten that day (calories in)
-            { name: "Chicken rice", kcal: 650 }
+          meals: [                        // Meals eaten that day (calories + protein)
+            { name: "Chicken rice", kcal: 650, protein: 45 }
           ],
           activities: [                   // Cardio/activities that day
             { type: "running", km: "6.16", min: "45" },
@@ -95,7 +95,8 @@
     cell(d,dd,ei)       — Creates one exercise cell for a given day/exercise index.
     save()              — Writes state to localStorage.
     ensureDay(d)        — Gets or creates day data, seeding from PLAN if empty.
-    calcDayEaten()      — Sum of meals for a day.
+    calcDayEaten()      — Sum of meal calories for a day.
+    calcDayProtein()    — Sum of meal protein for a day.
     buildMealSuggestions() — Populates datalist with top 15 most frequent meals.
     autofillMealKcal()  — Auto-fills kCal when meal name matches a historical entry.
     migrate()           — Data migration (exercise renames, old field conversions).
@@ -442,6 +443,7 @@
   .meal-add input:focus { border-color: var(--accent); }
   .meal-add .meal-name-inp { flex: 1; }
   .meal-add .meal-kcal-inp { width: 70px; text-align: center; font-family: 'JetBrains Mono', monospace; }
+  .meal-add .meal-prot-inp { width: 55px; text-align: center; font-family: 'JetBrains Mono', monospace; }
   .meal-add .meal-add-btn {
     background: var(--green); border: none; color: white; padding: 6px 12px;
     border-radius: var(--radius-sm); cursor: pointer; font-family: inherit; font-weight: 600; font-size: 12px;
@@ -457,6 +459,16 @@
   .meal-total-line .label { color: var(--text3); }
   .meal-total-line .value { color: var(--text); }
   .meal-total-line.total { font-weight: 600; border-top: 1px solid var(--border); padding-top: 4px; margin-top: 4px; }
+  .meal-total-line .goal-inp {
+    width: 55px; text-align: center; font-family: 'JetBrains Mono', monospace; font-size: 11px;
+    background: var(--bg2); border: 1px solid var(--border); color: var(--text);
+    border-radius: 4px; padding: 2px 4px; outline: none; font-weight: 600;
+  }
+  .meal-total-line .goal-inp:focus { border-color: var(--accent); }
+  .meal-total-line .goal-inp::placeholder { color: var(--text3); font-weight: 400; }
+  .meal-item .meal-prot {
+    font-family: 'JetBrains Mono', monospace; color: var(--green); font-weight: 600; font-size: 11px;
+  }
 
   /* Hidden file input for JSON import */
   #fileInput { display: none; }
@@ -620,7 +632,8 @@
     <div class="meal-add">
       <input type="text" class="meal-name-inp" id="mealNameInp" placeholder="Meal name..." list="mealSuggestions" autocomplete="off" oninput="autofillMealKcal()" onkeydown="if(event.key==='Enter')document.getElementById('mealKcalInp').focus()">
       <datalist id="mealSuggestions"></datalist>
-      <input type="text" class="meal-kcal-inp" id="mealKcalInp" placeholder="kCal" onkeydown="if(event.key==='Enter')addMeal()">
+      <input type="text" class="meal-kcal-inp" id="mealKcalInp" placeholder="kCal" onkeydown="if(event.key==='Enter')document.getElementById('mealProtInp').focus()">
+      <input type="text" class="meal-prot-inp" id="mealProtInp" placeholder="g prot" onkeydown="if(event.key==='Enter')addMeal()">
       <button class="meal-add-btn" onclick="addMeal()">Add</button>
     </div>
     <div class="meal-totals" id="mealTotals"></div>
@@ -725,6 +738,7 @@ function defaultState() {
       { name: 'Squats',                  rings: false, sets: 3 },
       { name: 'Knee Raises',             rings: false, sets: 3 },
     ],
+    goals: { calories: 0, protein: 0 },
     days: {}
   };
 }
@@ -782,6 +796,8 @@ function migrate() {
       delete d.running; delete d.running_min; delete d.rucking_km; delete d.rucking_kg;
     }
   });
+  // Ensure goals object exists
+  if (!state.goals) state.goals = { calories: 0, protein: 0 };
 }
 
 // ============================================================================
@@ -997,6 +1013,13 @@ function calcDayEaten(dateKey) {
   return day.meals.reduce((sum, m) => sum + (parseFloat(m.kcal) || 0), 0);
 }
 
+/** Sum of all meals for a day (protein in grams) */
+function calcDayProtein(dateKey) {
+  const day = state.days[dateKey];
+  if (!day || !day.meals) return 0;
+  return day.meals.reduce((sum, m) => sum + (parseFloat(m.protein) || 0), 0);
+}
+
 // ============================================================================
 // RENDER — builds the entire week grid
 // ============================================================================
@@ -1070,11 +1093,18 @@ function render() {
 
     // Calories eaten
     const eaten = calcDayEaten(cardioKey);
+    const protEaten = calcDayProtein(cardioKey);
 
     const eatLine = document.createElement('div'); eatLine.className = 'cal-summary-line clickable';
     eatLine.innerHTML = '<span class="cal-icon">\u{1F37D}\u{FE0F}</span><span class="cal-val">' + eaten + '</span><span class="cal-unit">kCal</span>';
     ((k) => { eatLine.onclick = () => openMeals(k); })(cardioKey);
     calCell.appendChild(eatLine);
+
+    // Protein eaten
+    const protLine = document.createElement('div'); protLine.className = 'cal-summary-line clickable';
+    protLine.innerHTML = '<span class="cal-icon">\u{1F4AA}</span><span class="cal-val">' + protEaten + '</span><span class="cal-unit">g prot</span>';
+    ((k) => { protLine.onclick = () => openMeals(k); })(cardioKey);
+    calCell.appendChild(protLine);
 
     row.appendChild(calCell);
 
@@ -1395,30 +1425,83 @@ function renderMeals() {
       kcal.replaceWith(inp); inp.focus(); inp.select();
     };
 
+    const prot = document.createElement('span'); prot.className = 'meal-prot'; prot.textContent = (meal.protein || 0) + 'g';
+    prot.style.cursor = 'pointer';
+    prot.onclick = () => {
+      const inp = document.createElement('input'); inp.type = 'text'; inp.value = meal.protein || '';
+      inp.className = 'meal-prot-inp'; inp.style.cssText = 'width:45px;text-align:center;font-size:12px;padding:2px 4px';
+      inp.onblur = () => { meal.protein = parseInt(inp.value) || 0; save(); renderMeals(); render(); };
+      inp.onkeydown = (e) => { if (e.key === 'Enter') inp.blur(); };
+      prot.replaceWith(inp); inp.focus(); inp.select();
+    };
+
     const del = document.createElement('button'); del.className = 'meal-del'; del.textContent = '\u00D7';
     del.onclick = () => { day.meals.splice(i, 1); save(); renderMeals(); render(); };
-    item.appendChild(name); item.appendChild(kcal); item.appendChild(del);
+    item.appendChild(name); item.appendChild(kcal); item.appendChild(prot); item.appendChild(del);
     list.appendChild(item);
   });
 
-  // Total eaten
+  // Totals + goals
   const totals = document.getElementById('mealTotals');
   totals.innerHTML = '';
   const eaten = calcDayEaten(mealModalDate);
+  const protTotal = calcDayProtein(mealModalDate);
+  if (!state.goals) state.goals = { calories: 0, protein: 0 };
+
   const totalLine = document.createElement('div'); totalLine.className = 'meal-total-line total';
-  totalLine.innerHTML = '<span class="label">Total eaten</span><span class="value">' + eaten + ' kCal</span>';
+  totalLine.innerHTML = '<span class="label">Total eaten</span><span class="value">' + eaten + ' kCal · ' + protTotal + 'g protein</span>';
   totals.appendChild(totalLine);
+
+  // Calorie goal
+  const calGoalLine = document.createElement('div'); calGoalLine.className = 'meal-total-line';
+  const calGoalLabel = document.createElement('span'); calGoalLabel.className = 'label'; calGoalLabel.textContent = 'Calorie goal';
+  const calGoalVal = document.createElement('span'); calGoalVal.className = 'value';
+  const calGoalInp = document.createElement('input'); calGoalInp.className = 'goal-inp';
+  calGoalInp.type = 'number'; calGoalInp.min = 0; calGoalInp.placeholder = '—';
+  calGoalInp.value = state.goals.calories || '';
+  calGoalInp.onchange = () => { state.goals.calories = parseInt(calGoalInp.value) || 0; save(); renderMeals(); render(); };
+  const calGoalUnit = document.createTextNode(' kCal');
+  calGoalVal.appendChild(calGoalInp); calGoalVal.appendChild(calGoalUnit);
+  if (state.goals.calories > 0) {
+    const remaining = state.goals.calories - eaten;
+    const remSpan = document.createElement('span');
+    remSpan.style.cssText = 'margin-left:8px;color:' + (remaining >= 0 ? 'var(--green)' : 'var(--red)');
+    remSpan.textContent = (remaining >= 0 ? remaining + ' left' : Math.abs(remaining) + ' over');
+    calGoalVal.appendChild(remSpan);
+  }
+  calGoalLine.appendChild(calGoalLabel); calGoalLine.appendChild(calGoalVal);
+  totals.appendChild(calGoalLine);
+
+  // Protein goal
+  const protGoalLine = document.createElement('div'); protGoalLine.className = 'meal-total-line';
+  const protGoalLabel = document.createElement('span'); protGoalLabel.className = 'label'; protGoalLabel.textContent = 'Protein goal';
+  const protGoalVal = document.createElement('span'); protGoalVal.className = 'value';
+  const protGoalInp = document.createElement('input'); protGoalInp.className = 'goal-inp';
+  protGoalInp.type = 'number'; protGoalInp.min = 0; protGoalInp.placeholder = '—';
+  protGoalInp.value = state.goals.protein || '';
+  protGoalInp.onchange = () => { state.goals.protein = parseInt(protGoalInp.value) || 0; save(); renderMeals(); render(); };
+  const protGoalUnit = document.createTextNode(' g');
+  protGoalVal.appendChild(protGoalInp); protGoalVal.appendChild(protGoalUnit);
+  if (state.goals.protein > 0) {
+    const remaining = state.goals.protein - protTotal;
+    const remSpan = document.createElement('span');
+    remSpan.style.cssText = 'margin-left:8px;color:' + (remaining >= 0 ? 'var(--green)' : 'var(--red)');
+    remSpan.textContent = (remaining >= 0 ? remaining + 'g left' : Math.abs(remaining) + 'g over');
+    protGoalVal.appendChild(remSpan);
+  }
+  protGoalLine.appendChild(protGoalLabel); protGoalLine.appendChild(protGoalVal);
+  totals.appendChild(protGoalLine);
 }
 
 /** Build datalist options from the top 15 most frequent historical meals. */
 function buildMealSuggestions() {
-  const map = {};  // name (lowercase) → { name (original case), kcal, count }
+  const map = {};  // name (lowercase) → { name (original case), kcal, protein, count }
   for (const day of Object.values(state.days)) {
     if (!day.meals) continue;
     for (const m of day.meals) {
       const key = m.name.toLowerCase();
-      if (map[key]) { map[key].count++; map[key].kcal = m.kcal; }
-      else map[key] = { name: m.name, kcal: m.kcal, count: 1 };
+      if (map[key]) { map[key].count++; map[key].kcal = m.kcal; map[key].protein = m.protein || 0; }
+      else map[key] = { name: m.name, kcal: m.kcal, protein: m.protein || 0, count: 1 };
     }
   }
   const top = Object.values(map).sort((a, b) => b.count - a.count).slice(0, 15);
@@ -1427,12 +1510,12 @@ function buildMealSuggestions() {
   for (const entry of top) {
     const opt = document.createElement('option');
     opt.value = entry.name;
-    opt.label = entry.name + ' — ' + entry.kcal + ' kCal';
+    opt.label = entry.name + ' — ' + entry.kcal + ' kCal / ' + entry.protein + 'g';
     dl.appendChild(opt);
   }
 }
 
-/** When user picks a suggestion, auto-fill the kCal field. */
+/** When user picks a suggestion, auto-fill the kCal and protein fields. */
 function autofillMealKcal() {
   const nameVal = document.getElementById('mealNameInp').value.trim().toLowerCase();
   for (const day of Object.values(state.days)) {
@@ -1440,6 +1523,7 @@ function autofillMealKcal() {
     for (const m of day.meals) {
       if (m.name.toLowerCase() === nameVal) {
         document.getElementById('mealKcalInp').value = m.kcal;
+        document.getElementById('mealProtInp').value = m.protein || '';
         return;
       }
     }
@@ -1450,14 +1534,16 @@ function addMeal() {
   if (!mealModalDate) return;
   const nameInp = document.getElementById('mealNameInp');
   const kcalInp = document.getElementById('mealKcalInp');
+  const protInp = document.getElementById('mealProtInp');
   const name = nameInp.value.trim();
   const kcal = parseInt(kcalInp.value);
   if (!name || !kcal) return;
+  const protein = parseInt(protInp.value) || 0;
   const day = state.days[mealModalDate];
   if (!day.meals) day.meals = [];
-  day.meals.push({ name, kcal });
+  day.meals.push({ name, kcal, protein });
   save();
-  nameInp.value = ''; kcalInp.value = '';
+  nameInp.value = ''; kcalInp.value = ''; protInp.value = '';
   nameInp.focus();
   buildMealSuggestions();
   renderMeals(); render();
@@ -1605,7 +1691,7 @@ function exportCSV() {
     }
     if (day.meals && day.meals.length) {
       day.meals.forEach(m => {
-        csv += [k, DAY_NAMES[d.getDay()], 'Meal: ' + m.name, m.kcal + ' kCal'].join(';') + '\n';
+        csv += [k, DAY_NAMES[d.getDay()], 'Meal: ' + m.name, m.kcal + ' kCal', (m.protein || 0) + 'g protein'].join(';') + '\n';
       });
     }
   });
@@ -1690,6 +1776,7 @@ const CHART_SERIES = [
   { id: 'weight',   label: 'Weight',   unit: 'kg',   color: '#6c5ce7', light: '#a29bfe', field: 'weight' },
   { id: 'waist',    label: 'Waist',    unit: 'cm',   color: '#00b894', light: '#55efc4', field: 'waist' },
   { id: 'calories', label: 'Calories', unit: 'kCal', color: '#e17055', light: '#fab1a0', field: (day, k) => calcDayEaten(k) },
+  { id: 'protein',  label: 'Protein',  unit: 'g',    color: '#fdcb6e', light: '#ffeaa7', field: (day, k) => calcDayProtein(k) },
 ];
 
 function renderCharts() {
