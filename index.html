@@ -954,7 +954,9 @@ function ensureDay(d) {
   if (!state.days[k]) state.days[k] = { exercises: [] };
   const dd = state.days[k];
   const dow = d.getDay();
-  const p = (state.plan && state.plan[dow]) || PLAN[dow] || [];
+  // Use custom plan only for today and future dates; past dates use hardcoded PLAN
+  const useCustom = state.plan && state.plan[dow] && k >= dk(today);
+  const p = useCustom ? state.plan[dow] : (PLAN[dow] || []);
   if (dd.exercises.length === 0 && p.length > 0) {
     dd.exercises = p.map(n => ({ name: n, sets: normalizeSets([], n) }));
     save();
@@ -1173,10 +1175,6 @@ function render() {
     exRow.className = 'exercises-row';
 
     const dd = ensureDay(d);
-    const p = (state.plan && state.plan[dow]) || PLAN[dow] || [];
-    if (dd.exercises.length === 0 && p.length > 0) {
-      dd.exercises = p.map(n => ({ name: n, sets: normalizeSets([], n) }));
-    }
     for (let ei = 0; ei < dd.exercises.length; ei++) {
       exRow.appendChild(cell(d, dd, ei));
     }
