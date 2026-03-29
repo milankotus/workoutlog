@@ -1538,18 +1538,20 @@ function buildMealSuggestions() {
   }
 }
 
-/** When user picks a suggestion, auto-fill the kCal and protein fields. */
+/** When user picks a suggestion, auto-fill the kCal and protein fields.
+    Uses the LAST (most recent) match, consistent with buildMealSuggestions(). */
 function autofillMealKcal() {
   const nameVal = document.getElementById('mealNameInp').value.trim().toLowerCase();
+  let found = null;
   for (const day of Object.values(state.days)) {
     if (!day.meals) continue;
     for (const m of day.meals) {
-      if (m.name.toLowerCase() === nameVal) {
-        document.getElementById('mealKcalInp').value = m.kcal;
-        document.getElementById('mealProtInp').value = m.protein || '';
-        return;
-      }
+      if (m.name.toLowerCase() === nameVal) found = m;
     }
+  }
+  if (found) {
+    document.getElementById('mealKcalInp').value = found.kcal;
+    document.getElementById('mealProtInp').value = found.protein || '';
   }
 }
 
