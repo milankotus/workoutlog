@@ -53,8 +53,9 @@
       }
     }
 
-  DEFAULT WEEKLY PLAN (PLAN object):
+  DEFAULT WEEKLY PLAN (PLAN object, overridden by state.plan):
     Defines which exercises auto-populate when opening a day for the first time.
+    Changing an exercise propagates to all future weeks (same day-of-week, same slot).
     Mon: Horiz. Pullups, Dips / Hold, Straight Bridges
     Tue: Biceps curls, Advanced Incline Pushups, Knee Raises
     Wed: Horiz. Pullups, Straight Bridges, Squats
@@ -953,12 +954,40 @@ function ensureDay(d) {
   if (!state.days[k]) state.days[k] = { exercises: [] };
   const dd = state.days[k];
   const dow = d.getDay();
-  const p = PLAN[dow] || [];
+  const p = (state.plan && state.plan[dow]) || PLAN[dow] || [];
   if (dd.exercises.length === 0 && p.length > 0) {
     dd.exercises = p.map(n => ({ name: n, sets: normalizeSets([], n) }));
     save();
   }
   return dd;
+}
+
+/**
+ * Propagate an exercise change to future weeks and update the saved plan.
+ * Updates state.plan for the day-of-week so new weeks get the new exercise.
+ * Updates all existing future days (same day-of-week) at the same slot position.
+ */
+function propagateExerciseChange(d, ei, oldName, newName) {
+  const dow = d.getDay();
+  const changedKey = dk(d);
+  // Update saved plan
+  if (!state.plan) state.plan = {};
+  const base = PLAN[dow] || [];
+  if (!state.plan[dow]) state.plan[dow] = [...base];
+  // Grow the plan array if needed (user added extra exercises beyond the default plan)
+  while (state.plan[dow].length <= ei) state.plan[dow].push('');
+  state.plan[dow][ei] = newName;
+  // Update future existing days with same day-of-week
+  for (const [key, dayData] of Object.entries(state.days)) {
+    if (key <= changedKey) continue;
+    const [y, m, day] = key.split('-').map(Number);
+    const dateObj = new Date(y, m - 1, day);
+    if (dateObj.getDay() !== dow) continue;
+    if (dayData.exercises && dayData.exercises[ei] && dayData.exercises[ei].name === oldName) {
+      dayData.exercises[ei].name = newName;
+      dayData.exercises[ei].sets = normalizeSets(dayData.exercises[ei].sets, newName);
+    }
+  }
 }
 
 /**
@@ -1144,7 +1173,7 @@ function render() {
     exRow.className = 'exercises-row';
 
     const dd = ensureDay(d);
-    const p = PLAN[dow] || [];
+    const p = (state.plan && state.plan[dow]) || PLAN[dow] || [];
     if (dd.exercises.length === 0 && p.length > 0) {
       dd.exercises = p.map(n => ({ name: n, sets: normalizeSets([], n) }));
     }
@@ -1203,9 +1232,13 @@ function cell(d, dd, ei) {
     sel.appendChild(o);
   });
   sel.onchange = () => {
-    dd.exercises[ei].name = sel.value;
+    const oldName = dd.exercises[ei].name;
+    const newName = sel.value;
+    dd.exercises[ei].name = newName;
     // Resize sets array to match new exercise's configured set count
-    dd.exercises[ei].sets = normalizeSets(dd.exercises[ei].sets, sel.value);
+    dd.exercises[ei].sets = normalizeSets(dd.exercises[ei].sets, newName);
+    // Propagate to future weeks (same day-of-week, same slot)
+    if (newName) propagateExerciseChange(d, ei, oldName, newName);
     save(); render();
   };
   c.appendChild(sel);
