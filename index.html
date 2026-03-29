@@ -96,7 +96,8 @@
     render()            — Rebuilds the entire week grid.
     cell(d,dd,ei)       — Creates one exercise cell for a given day/exercise index.
     save()              — Writes state to localStorage.
-    ensureDay(d)        — Gets or creates day data, seeding from PLAN if empty.
+    ensureDay(d)        — Gets or creates day data, seeding from PLAN/state.plan if empty.
+    propagateExerciseChange() — Pushes exercise change to future weeks + updates plan.
     calcDayEaten()      — Sum of meal calories for a day.
     calcDayProtein()    — Sum of meal protein for a day.
     buildMealSuggestions() — Populates datalist with top 15 most frequent meals.
