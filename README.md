@@ -8,7 +8,8 @@ Single-file calisthenics & nutrition tracker based on [Hybrid Calisthenics](http
 
 - Weekly exercise tracking with sets/reps, history comparison (-2w, -1w)
 - Body measurements (weight, waist)
-- Meal logging with calorie tracking and autocomplete
+- Meal logging with calorie + protein tracking and autocomplete
+- Manage saved meals (hide unwanted items from suggestions)
 - Activities (running, walking, rucking, bicycling)
 - Exercise mastery system (goal reps, streak tracking)
 - Combined chart (weight, waist, calories) with time range selector

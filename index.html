@@ -85,8 +85,9 @@
   MODALS:
     Meals modal     — Click calories. Add/edit/remove meals (name + kCal).
                        Autocomplete suggests top 15 most frequent meals (datalist).
-                       Selecting a suggestion auto-fills kCal; any historical meal
-                       name typed exactly also auto-fills kCal via oninput.
+                       Selecting a suggestion auto-fills kCal + protein.
+                       Uses the most recent historical entry for that meal name.
+                       "Manage saved meals" link lets user hide unwanted suggestions.
     Activities modal — Click activities count. Add/remove activities with params.
     Manage modal    — Footer button. Add/remove exercises, configure sets, toggle rings.
 
@@ -98,7 +99,8 @@
     calcDayEaten()      — Sum of meal calories for a day.
     calcDayProtein()    — Sum of meal protein for a day.
     buildMealSuggestions() — Populates datalist with top 15 most frequent meals.
-    autofillMealKcal()  — Auto-fills kCal when meal name matches a historical entry.
+    autofillMealKcal()  — Auto-fills kCal + protein from most recent historical match.
+    toggleSavedMeals()  — Shows/hides saved meals list with option to hide entries.
     migrate()           — Data migration (exercise renames, old field conversions).
 
   EXPORT/IMPORT:
@@ -637,6 +639,10 @@
       <input type="text" class="meal-prot-inp" id="mealProtInp" placeholder="g prot" onkeydown="if(event.key==='Enter')addMeal()">
       <button class="meal-add-btn" onclick="addMeal()">Add</button>
     </div>
+    <div style="margin-top:4px;text-align:right">
+      <a href="#" id="savedMealsToggle" style="font-size:11px;color:var(--text3);text-decoration:none" onclick="event.preventDefault();toggleSavedMeals()">Manage saved meals</a>
+    </div>
+    <div id="savedMealsList" style="display:none;margin-top:6px;max-height:150px;overflow-y:auto"></div>
     <div class="meal-totals" id="mealTotals"></div>
     <button class="manage-close" onclick="closeMeals()">Close</button>
   </div>
@@ -799,6 +805,8 @@ function migrate() {
   });
   // Ensure goals object exists
   if (!state.goals) state.goals = { calories: 0, protein: 0 };
+  // Ensure hiddenMeals array exists (meals hidden from autocomplete suggestions)
+  if (!state.hiddenMeals) state.hiddenMeals = [];
 }
 
 // ============================================================================
@@ -1516,17 +1524,25 @@ function renderMeals() {
   totals.appendChild(protGoalLine);
 }
 
-/** Build datalist options from the top 15 most frequent historical meals. */
-function buildMealSuggestions() {
+/** Build map of all unique historical meals (excluding hidden ones). */
+function getMealMap() {
+  const hidden = new Set((state.hiddenMeals || []).map(n => n.toLowerCase()));
   const map = {};  // name (lowercase) → { name (original case), kcal, protein, count }
   for (const day of Object.values(state.days)) {
     if (!day.meals) continue;
     for (const m of day.meals) {
       const key = m.name.toLowerCase();
+      if (hidden.has(key)) continue;
       if (map[key]) { map[key].count++; map[key].kcal = m.kcal; map[key].protein = m.protein || 0; }
       else map[key] = { name: m.name, kcal: m.kcal, protein: m.protein || 0, count: 1 };
     }
   }
+  return map;
+}
+
+/** Build datalist options from the top 15 most frequent historical meals. */
+function buildMealSuggestions() {
+  const map = getMealMap();
   const top = Object.values(map).sort((a, b) => b.count - a.count).slice(0, 15);
   const dl = document.getElementById('mealSuggestions');
   dl.innerHTML = '';
@@ -1538,20 +1554,57 @@ function buildMealSuggestions() {
   }
 }
 
+/** Toggle the saved meals management list. */
+function toggleSavedMeals() {
+  const container = document.getElementById('savedMealsList');
+  if (container.style.display !== 'none') { container.style.display = 'none'; return; }
+  container.style.display = 'block';
+  renderSavedMeals();
+}
+
+/** Render the saved meals list with hide buttons. */
+function renderSavedMeals() {
+  const container = document.getElementById('savedMealsList');
+  const map = getMealMap();
+  const all = Object.values(map).sort((a, b) => b.count - a.count);
+  container.innerHTML = '';
+  if (all.length === 0) {
+    container.innerHTML = '<div style="font-size:11px;color:var(--text3);padding:4px">No saved meals</div>';
+    return;
+  }
+  for (const entry of all) {
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;gap:6px;padding:3px 8px;background:var(--bg3);border-radius:4px;margin-bottom:2px;font-size:11px';
+    const name = document.createElement('span');
+    name.style.cssText = 'flex:1;color:var(--text)';
+    name.textContent = entry.name;
+    const info = document.createElement('span');
+    info.style.cssText = 'color:var(--text3);font-family:"JetBrains Mono",monospace;font-size:10px';
+    info.textContent = entry.kcal + ' kCal / ' + entry.protein + 'g · ×' + entry.count;
+    const del = document.createElement('button');
+    del.style.cssText = 'background:none;border:none;color:var(--text3);cursor:pointer;font-size:13px;padding:0 4px';
+    del.textContent = '\u00D7';
+    del.title = 'Hide from suggestions';
+    del.onclick = () => {
+      if (!state.hiddenMeals) state.hiddenMeals = [];
+      state.hiddenMeals.push(entry.name.toLowerCase());
+      save();
+      buildMealSuggestions();
+      renderSavedMeals();
+    };
+    row.appendChild(name); row.appendChild(info); row.appendChild(del);
+    container.appendChild(row);
+  }
+}
+
 /** When user picks a suggestion, auto-fill the kCal and protein fields.
-    Uses the LAST (most recent) match, consistent with buildMealSuggestions(). */
+    Uses getMealMap() which returns the most recent values and respects hiddenMeals. */
 function autofillMealKcal() {
   const nameVal = document.getElementById('mealNameInp').value.trim().toLowerCase();
-  let found = null;
-  for (const day of Object.values(state.days)) {
-    if (!day.meals) continue;
-    for (const m of day.meals) {
-      if (m.name.toLowerCase() === nameVal) found = m;
-    }
-  }
-  if (found) {
-    document.getElementById('mealKcalInp').value = found.kcal;
-    document.getElementById('mealProtInp').value = found.protein || '';
+  const entry = getMealMap()[nameVal];
+  if (entry) {
+    document.getElementById('mealKcalInp').value = entry.kcal;
+    document.getElementById('mealProtInp').value = entry.protein || '';
   }
 }
 
