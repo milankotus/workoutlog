@@ -10,6 +10,10 @@
   WORKOUT LOG — Single-file calisthenics & nutrition tracker
   ============================================================================
 
+  IMPORTANT: All code changes MUST be commented. Every function, significant block,
+  and non-obvious logic should have clear comments explaining WHAT it does and WHY.
+  This rule applies to all future modifications.
+
   OVERVIEW:
     Local HTML file opened directly in browser (file:// protocol).
     Tracks daily exercises (sets/reps), cardio activities, meals (calories eaten),
@@ -698,7 +702,9 @@ const LS = 'workout_log';
 /** Cloud sync via Cloudflare Worker (keeps API key server-side) */
 const WORKER_URL = 'https://workout-sync.milan-kotus.workers.dev';
 
+/** Full day names for display in modals and CSV export */
 const DAY_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+/** Short day names for the week grid row labels */
 const DAY_SHORT = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 
 /** Neutral color for all day labels */
@@ -752,7 +758,11 @@ function defaultState() {
   };
 }
 
-/** Load state from localStorage, or use defaults */
+/**
+ * Load state from localStorage, or use defaults.
+ * If data exists, run migrate() to handle schema changes from older versions.
+ * Falls back to defaults on parse errors (corrupted localStorage).
+ */
 let state;
 try {
   const raw = localStorage.getItem(LS);
@@ -815,10 +825,24 @@ function migrate() {
 // STORAGE
 // ============================================================================
 
-/** Instantly persist state to localStorage + debounced cloud save. */
+/**
+ * STORAGE SYSTEM
+ *
+ * save() writes to localStorage instantly on every change, then triggers a
+ * debounced cloud save (3s delay) to avoid hammering the API during rapid typing.
+ *
+ * cloudLoad() runs once on page load to pull the latest state from the cloud.
+ * If cloud data exists and has content, it overwrites localStorage (_skipCloud
+ * flag prevents the overwrite from triggering another cloud save).
+ *
+ * Cloud sync goes through a Cloudflare Worker proxy that validates the PIN
+ * and forwards to JSONBin.io for storage.
+ */
 let _cloudTimer = null;
+/** When true, save() skips cloud sync (used during cloudLoad to prevent feedback loop) */
 let _skipCloud = false;
 
+/** Get or prompt for the sync PIN, stored in localStorage */
 function getPin() {
   let pin = localStorage.getItem('workout_pin');
   if (!pin) {
@@ -828,11 +852,13 @@ function getPin() {
   return pin;
 }
 
+/** Persist state to localStorage + trigger debounced cloud save */
 function save() {
   localStorage.setItem(LS, JSON.stringify(state));
   if (!_skipCloud) cloudSave();
 }
 
+/** Debounced cloud save — waits 3s after last call before sending PUT */
 function cloudSave() {
   clearTimeout(_cloudTimer);
   const pin = getPin();
@@ -856,6 +882,7 @@ function cloudSave() {
   }, 3000);
 }
 
+/** Pull latest state from cloud on page load. Overwrites local data if cloud has content. */
 function cloudLoad() {
   const pin = getPin();
   if (!pin) { setSyncStatus('no PIN'); return; }
@@ -870,10 +897,11 @@ function cloudLoad() {
   })
   .then(record => {
     if (!record) return;
+    // Only overwrite if cloud data has actual day entries (not empty/corrupt)
     if (record.days && Object.keys(record.days).length > 0) {
       state = record;
       migrate();
-      _skipCloud = true;
+      _skipCloud = true;   // Prevent cloud save during local write
       localStorage.setItem(LS, JSON.stringify(state));
       _skipCloud = false;
       render();
@@ -883,6 +911,7 @@ function cloudLoad() {
   .catch(() => setSyncStatus('error'));
 }
 
+/** Update the sync status indicator text and color in the footer */
 function setSyncStatus(status) {
   const el = document.getElementById('syncStatus');
   if (!el) return;
@@ -937,6 +966,7 @@ function getMonday(d) {
   return dd;
 }
 
+/** Check if two Date objects represent the same calendar day */
 function same(a, b) {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }
@@ -1043,7 +1073,9 @@ function getMasteryStreak(exName, goal, numSets, upToDate) {
 // MEALS & ACTIVITIES
 // ============================================================================
 
+/** Currently open meal modal date key (null = closed). Set by openMeals(). */
 let mealModalDate = null;
+/** Currently open activities modal date key (null = closed). Set by openActivities(). */
 let actModalDate = null;
 
 /** Activity types with icons and required fields */
@@ -1139,7 +1171,8 @@ function render() {
     ((k) => { actLine.onclick = () => openActivities(k); })(cardioKey);
     calCell.appendChild(actLine);
 
-    // Calories eaten
+    // Calories eaten — clickable line that opens the meals modal.
+    // Shows "478 / 2200 kCal" with color-coded goal progress (red→green) if goal is set.
     const eaten = calcDayEaten(cardioKey);
     const protEaten = calcDayProtein(cardioKey);
 
@@ -1180,7 +1213,8 @@ function render() {
       exRow.appendChild(cell(d, dd, ei));
     }
 
-    // +/− buttons for adding/removing exercises (max 8 per day)
+    // +/− buttons for adding/removing exercises (max 8 per day).
+    // capturedDate is needed because the loop variable `d` gets mutated on next iteration.
     const btns = document.createElement('div');
     btns.className = 'add-ex-cell';
     if (dd.exercises.length < 8) {
@@ -1321,11 +1355,13 @@ function cell(d, dd, ei) {
 // WEEK NAVIGATION
 // ============================================================================
 
+/** Navigate to previous/next week (delta = -1 or +1) */
 function changeWeek(delta) {
   weekStart.setDate(weekStart.getDate() + delta * 7);
   render();
 }
 
+/** Jump back to the week containing today */
 function goToday() {
   weekStart = getMonday(new Date(today));
   render();
@@ -1335,6 +1371,7 @@ function goToday() {
 // MANAGE EXERCISES MODAL
 // ============================================================================
 
+/** Open the exercise management modal (add/remove exercises, configure sets/goals) */
 function openManage() {
   document.getElementById('manageOverlay').classList.add('open');
   renderManage();
@@ -1439,6 +1476,7 @@ function addExercise() {
 // MEAL LOG MODAL
 // ============================================================================
 
+/** Open the meals modal for a specific day. Builds autocomplete suggestions first. */
 function openMeals(dateKey) {
   mealModalDate = dateKey;
   document.getElementById('mealOverlay').classList.add('open');
@@ -1451,6 +1489,10 @@ function closeMeals() {
   mealModalDate = null;
 }
 
+/**
+ * Render the meals modal content: meal list (each item inline-editable),
+ * totals, and calorie/protein goal inputs with remaining/over indicators.
+ */
 function renderMeals() {
   if (!mealModalDate) return;
   if (!state.days[mealModalDate]) state.days[mealModalDate] = { exercises: [] };
@@ -1468,6 +1510,8 @@ function renderMeals() {
   day.meals.forEach((meal, i) => {
     const item = document.createElement('div'); item.className = 'meal-item';
 
+    // Each meal field (name, kcal, protein) is click-to-edit: clicking replaces
+    // the span with an input, which saves on blur and re-renders.
     const name = document.createElement('span'); name.className = 'meal-name'; name.textContent = meal.name;
     name.style.cursor = 'pointer';
     name.onclick = () => {
@@ -1594,7 +1638,9 @@ function toggleSavedMeals() {
   renderSavedMeals();
 }
 
+/** Current sort column for the saved meals management list */
 let savedMealsSort = 'count'; // 'count' | 'name' | 'kcal' | 'protein'
+/** Sort direction — false=descending (default), true=ascending. Toggled by clicking active sort button. */
 let savedMealsSortAsc = false;
 
 /** Render the saved meals list with sort buttons and hide buttons. */
@@ -1676,6 +1722,7 @@ function autofillMealKcal() {
   }
 }
 
+/** Add a new meal from the input fields, then clear inputs and rebuild suggestions */
 function addMeal() {
   if (!mealModalDate) return;
   const nameInp = document.getElementById('mealNameInp');
@@ -1699,6 +1746,7 @@ function addMeal() {
 // ACTIVITIES MODAL
 // ============================================================================
 
+/** Open activities modal — populates the activity type dropdown and renders existing activities */
 function openActivities(dateKey) {
   actModalDate = dateKey;
   const sel = document.getElementById('actType');
@@ -1718,10 +1766,12 @@ function closeActivities() {
   actModalDate = null;
 }
 
+/** Show/hide the weight (kg) field — only visible for rucking activities */
 function toggleActKg() {
   document.getElementById('actKg').style.display = document.getElementById('actType').value === 'rucking' ? '' : 'none';
 }
 
+/** Render activity list with inline-editable fields (km, min, kg) and delete buttons */
 function renderActivities() {
   if (!actModalDate) return;
   if (!state.days[actModalDate]) state.days[actModalDate] = { exercises: [] };
@@ -1744,6 +1794,7 @@ function renderActivities() {
     label.textContent = type.icon + ' ' + type.name;
     item.appendChild(label);
 
+    // Factory for click-to-edit activity fields (same pattern as meal inline editing)
     const makeField = (val, unit, key) => {
       const span = document.createElement('span');
       span.style.cssText = 'font-family:"JetBrains Mono",monospace;font-size:11px;color:var(--accent2);cursor:pointer';
@@ -1771,6 +1822,7 @@ function renderActivities() {
 
 }
 
+/** Add a new activity from the modal input fields */
 function addActivity() {
   if (!actModalDate) return;
   const type = document.getElementById('actType').value;
@@ -1879,6 +1931,7 @@ function clearAllData() {
 // CHARTS
 // ============================================================================
 
+/** Number of days to show in charts (0 = all time). Changed by range buttons. */
 let chartRangeDays = 90;
 
 function openCharts() {
@@ -1890,6 +1943,7 @@ function closeCharts() {
   document.getElementById('chartsOverlay').classList.remove('open');
 }
 
+/** Switch chart time range (30d/90d/180d/all) and re-render */
 function setChartRange(days) {
   chartRangeDays = days;
   document.querySelectorAll('.chart-range-btn').forEach(b => b.classList.remove('active'));
@@ -1925,6 +1979,7 @@ const CHART_SERIES = [
   { id: 'protein',  label: 'Protein',  unit: 'g',    color: '#fdcb6e', light: '#ffeaa7', field: (day, k) => calcDayProtein(k) },
 ];
 
+/** Render the charts modal — builds legend from CHART_SERIES, gathers data, draws canvas */
 function renderCharts() {
   // Build legend
   const legend = document.getElementById('chartLegend');
@@ -2093,6 +2148,8 @@ function drawCombinedChart(canvasId, seriesList) {
 // INITIAL RENDER
 // ============================================================================
 
+// Initial render (from localStorage), then pull latest from cloud.
+// cloudLoad() may re-render if cloud data is newer.
 render();
 cloudLoad();
 </script>

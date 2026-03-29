@@ -50,3 +50,7 @@ The entire app is a single `index.html` file. To modify:
 1. Edit `index.html`
 2. Push to `main` branch
 3. GitHub Pages auto-deploys within ~1 minute
+
+### Code style
+
+**All code changes must be commented.** Every function, significant block, and non-obvious logic should have clear comments explaining what it does and why. This ensures the codebase remains understandable for future modifications.
