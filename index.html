@@ -988,7 +988,8 @@ function ensureDay(d) {
   // Use custom plan only for today and future dates; past dates use hardcoded PLAN
   const useCustom = state.plan && state.plan[dow] && k >= dk(today);
   const p = useCustom ? state.plan[dow] : (PLAN[dow] || []);
-  if (dd.exercises.length === 0 && p.length > 0) {
+  // Only seed from plan if day has no exercises AND user hasn't intentionally cleared them
+  if (dd.exercises.length === 0 && p.length > 0 && !dd.noExercises) {
     dd.exercises = p.map(n => ({ name: n, sets: normalizeSets([], n) }));
     save();
   }
@@ -1222,17 +1223,23 @@ function render() {
       ab.className = 'add-ex-btn'; ab.textContent = '+';
       const capturedDate = new Date(d);
       ab.onclick = () => {
-        ensureDay(capturedDate).exercises.push({ name: '', sets: ['','',''] });
+        const dayData = ensureDay(capturedDate);
+        delete dayData.noExercises;  // Clear the "intentionally empty" flag
+        dayData.exercises.push({ name: '', sets: ['','',''] });
         save(); render();
       };
       btns.appendChild(ab);
     }
-    if (dd.exercises.length > 1) {
+    // Show − button when there's at least 1 exercise (allows going to zero)
+    if (dd.exercises.length > 0) {
       const rb = document.createElement('button');
       rb.className = 'rm-ex-btn'; rb.textContent = '−';
       const capturedDate = new Date(d);
       rb.onclick = () => {
-        ensureDay(capturedDate).exercises.pop();
+        const dayData = ensureDay(capturedDate);
+        dayData.exercises.pop();
+        // Mark day as intentionally empty so ensureDay() won't re-seed from PLAN
+        if (dayData.exercises.length === 0) dayData.noExercises = true;
         save(); render();
       };
       btns.appendChild(rb);
