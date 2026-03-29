@@ -1563,6 +1563,7 @@ function toggleSavedMeals() {
 }
 
 let savedMealsSort = 'count'; // 'count' | 'name' | 'kcal' | 'protein'
+let savedMealsSortAsc = false;
 
 /** Render the saved meals list with sort buttons and hide buttons. */
 function renderSavedMeals() {
@@ -1588,18 +1589,24 @@ function renderSavedMeals() {
     const btn = document.createElement('button');
     btn.textContent = s.label;
     const active = savedMealsSort === s.key;
+    btn.textContent = s.label + (active ? (savedMealsSortAsc ? ' \u25B2' : ' \u25BC') : '');
     btn.style.cssText = 'font-family:inherit;font-size:10px;padding:2px 8px;border-radius:4px;cursor:pointer;border:1px solid var(--border);' +
       (active ? 'background:var(--accent);color:var(--bg);font-weight:600' : 'background:var(--bg3);color:var(--text3)');
-    btn.onclick = () => { savedMealsSort = s.key; renderSavedMeals(); };
+    btn.onclick = () => {
+      if (savedMealsSort === s.key) savedMealsSortAsc = !savedMealsSortAsc;
+      else { savedMealsSort = s.key; savedMealsSortAsc = false; }
+      renderSavedMeals();
+    };
     sortBar.appendChild(btn);
   }
   container.appendChild(sortBar);
 
   // Sort entries
-  if (savedMealsSort === 'name') all.sort((a, b) => a.name.localeCompare(b.name));
-  else if (savedMealsSort === 'kcal') all.sort((a, b) => b.kcal - a.kcal);
-  else if (savedMealsSort === 'protein') all.sort((a, b) => b.protein - a.protein);
-  else all.sort((a, b) => b.count - a.count);
+  const dir = savedMealsSortAsc ? 1 : -1;
+  if (savedMealsSort === 'name') all.sort((a, b) => dir * a.name.localeCompare(b.name));
+  else if (savedMealsSort === 'kcal') all.sort((a, b) => dir * (b.kcal - a.kcal));
+  else if (savedMealsSort === 'protein') all.sort((a, b) => dir * (b.protein - a.protein));
+  else all.sort((a, b) => dir * (b.count - a.count));
 
   for (const entry of all) {
     const row = document.createElement('div');
