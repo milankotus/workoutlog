@@ -213,10 +213,10 @@
 
   /* Exercise dropdown */
   .exercise-cell select {
-    width: 100%; font-size: 11px; padding: 4px 6px;
+    width: 100%; max-width: 100%; font-size: 11px; padding: 4px 6px;
     background: var(--bg3); border: 1px solid var(--border); color: var(--text);
     border-radius: var(--radius-sm); font-family: inherit; cursor: pointer;
-    outline: none; margin-bottom: 3px;
+    outline: none; margin-bottom: 3px; box-sizing: border-box; overflow: hidden; text-overflow: ellipsis;
   }
   .exercise-cell select:focus { border-color: var(--accent); }
 
@@ -552,8 +552,8 @@
     .cardio-row { flex: 1 1 45%; }
     .cal-summary-line { flex: 1 1 45%; }
 
-    .exercises-row { flex-direction: column; gap: 4px; flex: none; }
-    .exercise-cell { flex: 1 1 auto; min-width: 100%; }
+    .exercises-row { flex-direction: column; gap: 4px; flex: none; width: 100%; overflow: hidden; }
+    .exercise-cell { flex: 1 1 auto; width: 100%; min-width: 0; box-sizing: border-box; }
 
     .add-ex-cell {
       width: 100%; min-width: 100%; flex-direction: row;
