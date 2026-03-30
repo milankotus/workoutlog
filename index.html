@@ -1011,16 +1011,16 @@ function propagateExerciseChange(d, ei, oldName, newName) {
   // Grow the plan array if needed (user added extra exercises beyond the default plan)
   while (state.plan[dow].length <= ei) state.plan[dow].push('');
   state.plan[dow][ei] = newName;
-  // Update future existing days with same day-of-week
+  // Update ALL future existing days with same day-of-week at the same slot
   for (const [key, dayData] of Object.entries(state.days)) {
     if (key <= changedKey) continue;
     const [y, m, day] = key.split('-').map(Number);
-    const dateObj = new Date(y, m - 1, day);
-    if (dateObj.getDay() !== dow) continue;
-    if (dayData.exercises && dayData.exercises[ei] && dayData.exercises[ei].name === oldName) {
-      dayData.exercises[ei].name = newName;
-      dayData.exercises[ei].sets = normalizeSets(dayData.exercises[ei].sets, newName);
-    }
+    if (new Date(y, m - 1, day).getDay() !== dow) continue;
+    if (!dayData.exercises) continue;
+    // Grow exercises array if needed so the slot exists
+    while (dayData.exercises.length <= ei) dayData.exercises.push({ name: '', sets: ['','',''] });
+    dayData.exercises[ei].name = newName;
+    dayData.exercises[ei].sets = normalizeSets(dayData.exercises[ei].sets, newName);
   }
 }
 
