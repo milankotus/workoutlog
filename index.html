@@ -997,73 +997,42 @@ function ensureDay(d) {
 }
 
 /**
- * Propagate an exercise change to future weeks and update the saved plan.
- * Updates state.plan for the day-of-week so new weeks get the new exercise.
- * Updates all existing future days (same day-of-week) at the same slot position.
+ * After any exercise modification, read the resulting exercise list for the
+ * modified day and propagate it to all future days with the same day-of-week.
+ * Also updates state.plan so newly created future days get the right template.
+ *
+ * For each future day: exercises are resized to match, names are set to match.
+ * If a slot already had the same exercise name, its recorded sets are preserved.
+ * If the name changed, sets are reset.
  */
-function propagateExerciseChange(d, ei, oldName, newName) {
+function propagateDayPlan(d) {
   const dow = d.getDay();
   const changedKey = dk(d);
-  // Update saved plan
-  if (!state.plan) state.plan = {};
-  const base = PLAN[dow] || [];
-  if (!state.plan[dow]) state.plan[dow] = [...base];
-  // Grow the plan array if needed (user added extra exercises beyond the default plan)
-  while (state.plan[dow].length <= ei) state.plan[dow].push('');
-  state.plan[dow][ei] = newName;
-  // Update ALL future existing days with same day-of-week at the same slot
-  for (const [key, dayData] of Object.entries(state.days)) {
-    if (key <= changedKey) continue;
-    const [y, m, day] = key.split('-').map(Number);
-    if (new Date(y, m - 1, day).getDay() !== dow) continue;
-    if (!dayData.exercises) continue;
-    // Grow exercises array if needed so the slot exists
-    while (dayData.exercises.length <= ei) dayData.exercises.push({ name: '', sets: ['','',''] });
-    dayData.exercises[ei].name = newName;
-    dayData.exercises[ei].sets = normalizeSets(dayData.exercises[ei].sets, newName);
-  }
-}
+  const src = state.days[changedKey];
+  const names = (src && src.exercises) ? src.exercises.map(e => e.name) : [];
 
-/**
- * Propagate exercise row removal to future weeks and update the saved plan.
- * Pops the last exercise from all future days with the same day-of-week.
- */
-function propagateRemoveExercise(d) {
-  const dow = d.getDay();
-  const changedKey = dk(d);
+  // Update saved plan template
   if (!state.plan) state.plan = {};
-  const base = PLAN[dow] || [];
-  if (!state.plan[dow]) state.plan[dow] = [...base];
-  if (state.plan[dow].length > 0) state.plan[dow].pop();
-  for (const [key, dayData] of Object.entries(state.days)) {
-    if (key <= changedKey) continue;
-    const [y, m, day] = key.split('-').map(Number);
-    if (new Date(y, m - 1, day).getDay() !== dow) continue;
-    if (dayData.exercises && dayData.exercises.length > 0) {
-      dayData.exercises.pop();
-      if (dayData.exercises.length === 0) dayData.noExercises = true;
-    }
-  }
-}
+  state.plan[dow] = [...names];
 
-/**
- * Propagate exercise row addition to future weeks and update the saved plan.
- * Pushes an empty exercise slot to all future days with the same day-of-week.
- */
-function propagateAddExercise(d) {
-  const dow = d.getDay();
-  const changedKey = dk(d);
-  if (!state.plan) state.plan = {};
-  if (!state.plan[dow]) state.plan[dow] = [...(PLAN[dow] || [])];
-  state.plan[dow].push('');
-  for (const [key, dayData] of Object.entries(state.days)) {
+  // Update all future existing days with same day-of-week
+  for (const [key, dd] of Object.entries(state.days)) {
     if (key <= changedKey) continue;
     const [y, m, day] = key.split('-').map(Number);
     if (new Date(y, m - 1, day).getDay() !== dow) continue;
-    if (dayData.exercises) {
-      delete dayData.noExercises;
-      dayData.exercises.push({ name: '', sets: ['','',''] });
+
+    if (names.length === 0) {
+      dd.exercises = [];
+      dd.noExercises = true;
+      continue;
     }
+    delete dd.noExercises;
+    dd.exercises = names.map((name, i) => {
+      const old = dd.exercises && dd.exercises[i];
+      // Preserve recorded sets if the exercise at this slot is unchanged
+      if (old && old.name === name) return old;
+      return { name: name, sets: normalizeSets([], name) };
+    });
   }
 }
 
@@ -1279,9 +1248,9 @@ function render() {
       const capturedDate = new Date(d);
       ab.onclick = () => {
         const dayData = ensureDay(capturedDate);
-        delete dayData.noExercises;  // Clear the "intentionally empty" flag
+        delete dayData.noExercises;
         dayData.exercises.push({ name: '', sets: ['','',''] });
-        propagateAddExercise(capturedDate);
+        propagateDayPlan(capturedDate);
         save(); render();
       };
       btns.appendChild(ab);
@@ -1294,9 +1263,8 @@ function render() {
       rb.onclick = () => {
         const dayData = ensureDay(capturedDate);
         dayData.exercises.pop();
-        // Mark day as intentionally empty so ensureDay() won't re-seed from PLAN
         if (dayData.exercises.length === 0) dayData.noExercises = true;
-        propagateRemoveExercise(capturedDate);
+        propagateDayPlan(capturedDate);
         save(); render();
       };
       btns.appendChild(rb);
@@ -1331,13 +1299,9 @@ function cell(d, dd, ei) {
     sel.appendChild(o);
   });
   sel.onchange = () => {
-    const oldName = dd.exercises[ei].name;
-    const newName = sel.value;
-    dd.exercises[ei].name = newName;
-    // Resize sets array to match new exercise's configured set count
-    dd.exercises[ei].sets = normalizeSets(dd.exercises[ei].sets, newName);
-    // Propagate to future weeks (same day-of-week, same slot)
-    propagateExerciseChange(d, ei, oldName, newName);
+    dd.exercises[ei].name = sel.value;
+    dd.exercises[ei].sets = normalizeSets(dd.exercises[ei].sets, sel.value);
+    propagateDayPlan(d);
     save(); render();
   };
   c.appendChild(sel);
