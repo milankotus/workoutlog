@@ -272,6 +272,9 @@
     transition: all .15s; font-family: inherit; padding: 0;
   }
   .move-btn:hover { border-color: var(--accent); color: var(--accent); }
+  /* Arrows: left/right on desktop, up/down on mobile */
+  .move-prev::after { content: '\25C0'; }
+  .move-next::after { content: '\25B6'; }
 
   /* === FOOTER === */
   .footer {
@@ -576,6 +579,8 @@
 
     .exercises-row { flex-direction: column; gap: 4px; flex: none; width: 100%; overflow: hidden; }
     .exercise-cell { flex: 1 1 auto; width: 100%; min-width: 0; box-sizing: border-box; }
+    .move-prev::after { content: '\25B2'; }  /* ▲ up */
+    .move-next::after { content: '\25BC'; }  /* ▼ down */
 
     .add-ex-cell {
       width: 100%; min-width: 100%; flex-direction: row;
@@ -1418,18 +1423,18 @@ function cell(d, dd, ei) {
     }
   }
 
-  // === MOVE LEFT/RIGHT BUTTONS ===
+  // === MOVE BUTTONS (left/right on desktop, up/down on mobile) ===
   if (!isPast && dd.exercises.length > 1) {
     const mr = document.createElement('div'); mr.className = 'move-row';
     if (ei > 0) {
-      const lb = document.createElement('button'); lb.className = 'move-btn'; lb.textContent = '\u25C0';
-      lb.title = 'Move left';
+      const lb = document.createElement('button'); lb.className = 'move-btn move-prev';
+      lb.title = 'Move';
       ((idx, dayDate) => { lb.onclick = () => { moveExercise(dayDate, idx, -1); }; })(ei, new Date(d));
       mr.appendChild(lb);
     }
     if (ei < dd.exercises.length - 1) {
-      const rb = document.createElement('button'); rb.className = 'move-btn'; rb.textContent = '\u25B6';
-      rb.title = 'Move right';
+      const rb = document.createElement('button'); rb.className = 'move-btn move-next';
+      rb.title = 'Move';
       ((idx, dayDate) => { rb.onclick = () => { moveExercise(dayDate, idx, 1); }; })(ei, new Date(d));
       mr.appendChild(rb);
     }
