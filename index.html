@@ -82,7 +82,10 @@
     Each exercise cell contains:
       - Dropdown (select from master exercise list)
       - History lines: -2w (2 weeks ago), -1w (last week), now (current, green)
+        Each line shows individual set values + total reps when all sets filled
+        (e.g. "26 · 23 · 20 = 69"). The "now" line updates live on each keystroke.
       - Set input fields (number depends on exercise's configured set count)
+      - Move buttons: ◀/▶ on desktop, ▲/▼ on mobile (CSS media query swap)
 
     Today's row is highlighted with a purple border + glow.
     Week navigation via ← Previous / Next → / Today buttons.
@@ -94,7 +97,9 @@
                        Uses the most recent historical entry for that meal name.
                        "Manage saved meals" link lets user hide unwanted suggestions.
     Activities modal — Click activities count. Add/remove activities with params.
-    Manage modal    — Footer button. Add/remove exercises, configure sets, toggle rings.
+    Manage modal    — Footer button. Add/remove/rename exercises, configure sets, toggle rings.
+                       Click exercise name to rename inline — propagates to all history,
+                       current week, and weekly plan template.
 
   KEY FUNCTIONS:
     render()            — Rebuilds the entire week grid.
@@ -102,6 +107,8 @@
     save()              — Writes state to localStorage.
     ensureDay(d)        — Gets or creates day data, seeding from PLAN/state.plan if empty.
     propagateExerciseChange() — Pushes exercise change to future weeks + updates plan.
+    renameExercise()        — Renames exercise everywhere (master list, all days, plan).
+    fmtSets()               — Formats sets array with total reps sum when all filled.
     calcDayEaten()      — Sum of meal calories for a day.
     calcDayProtein()    — Sum of meal protein for a day.
     buildMealSuggestions() — Populates datalist with top 15 most frequent meals.
@@ -263,7 +270,7 @@
   .add-ex-btn:hover { border-color: var(--green); color: var(--green); }
   .rm-ex-btn:hover { border-color: var(--red); color: var(--red); }
 
-  /* Move exercise left/right buttons */
+  /* Move exercise buttons — ◀/▶ on desktop, ▲/▼ on mobile (swapped via @media) */
   .move-row { display: flex; justify-content: center; gap: 4px; margin-top: 4px; }
   .move-btn {
     width: 22px; height: 18px; border-radius: var(--radius-sm); border: 1px solid var(--border);
