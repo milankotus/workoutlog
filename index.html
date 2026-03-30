@@ -308,7 +308,13 @@
     display: flex; align-items: center; gap: 8px; margin-bottom: 4px;
     padding: 5px 8px; background: var(--bg3); border-radius: var(--radius-sm); font-size: 13px;
   }
-  .manage-item .ex-name { flex: 1; }
+  .manage-item .ex-name { flex: 1; cursor: pointer; }
+  .manage-item .ex-name:hover { color: var(--accent2); }
+  .manage-item .ex-name-edit {
+    flex: 1; font-family: inherit; font-size: 13px; padding: 2px 6px;
+    background: var(--bg2); border: 1px solid var(--accent); color: var(--text);
+    border-radius: 4px; outline: none;
+  }
   .manage-item .ring-badge {
     font-size: 10px; color: var(--orange); background: rgba(245,166,35,.12);
     padding: 1px 6px; border-radius: 8px; font-weight: 600;
@@ -1466,6 +1472,30 @@ function goToday() {
 // MANAGE EXERCISES MODAL
 // ============================================================================
 
+/** Rename an exercise everywhere: master list, all days, and weekly plan template. */
+function renameExercise(oldName, newName) {
+  // Update master exercise list
+  const ex = state.exercises.find(e => e.name === oldName);
+  if (ex) ex.name = newName;
+
+  // Update all days in the log
+  for (const dd of Object.values(state.days)) {
+    if (!dd.exercises) continue;
+    for (const e of dd.exercises) {
+      if (e.name === oldName) e.name = newName;
+    }
+  }
+
+  // Update saved plan template
+  if (state.plan) {
+    for (const dow of Object.keys(state.plan)) {
+      state.plan[dow] = state.plan[dow].map(n => n === oldName ? newName : n);
+    }
+  }
+
+  save(); renderManage(); render();
+}
+
 /** Open the exercise management modal (add/remove exercises, configure sets/goals) */
 function openManage() {
   document.getElementById('manageOverlay').classList.add('open');
@@ -1484,9 +1514,27 @@ function renderManage() {
   state.exercises.forEach((ex, i) => {
     const item = document.createElement('div'); item.className = 'manage-item';
 
-    // Exercise name
+    // Exercise name (click to rename inline)
     const name = document.createElement('span');
     name.className = 'ex-name'; name.textContent = ex.name;
+    name.title = 'Click to rename';
+    name.onclick = () => {
+      const inp = document.createElement('input');
+      inp.className = 'ex-name-edit'; inp.value = ex.name;
+      const oldName = ex.name;
+      const commit = () => {
+        const newName = inp.value.trim();
+        if (!newName || newName === oldName) { renderManage(); return; }
+        if (state.exercises.some(e => e.name !== oldName && e.name.toLowerCase() === newName.toLowerCase())) {
+          alert('Name already exists.'); inp.focus(); return;
+        }
+        renameExercise(oldName, newName);
+      };
+      inp.onblur = commit;
+      inp.onkeydown = (e) => { if (e.key === 'Enter') inp.blur(); if (e.key === 'Escape') renderManage(); };
+      name.replaceWith(inp);
+      inp.focus(); inp.select();
+    };
     item.appendChild(name);
 
     // Rings badge
