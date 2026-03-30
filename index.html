@@ -1419,6 +1419,7 @@ function moveExercise(d, ei, dir) {
   const tmp = dayData.exercises[ei];
   dayData.exercises[ei] = dayData.exercises[target];
   dayData.exercises[target] = tmp;
+  propagateDayPlan(d);
   save(); render();
 }
 
