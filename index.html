@@ -263,6 +263,16 @@
   .add-ex-btn:hover { border-color: var(--green); color: var(--green); }
   .rm-ex-btn:hover { border-color: var(--red); color: var(--red); }
 
+  /* Move exercise left/right buttons */
+  .move-row { display: flex; justify-content: center; gap: 4px; margin-top: 4px; }
+  .move-btn {
+    width: 22px; height: 18px; border-radius: var(--radius-sm); border: 1px solid var(--border);
+    background: var(--bg3); color: var(--text3); cursor: pointer;
+    font-size: 10px; display: flex; align-items: center; justify-content: center;
+    transition: all .15s; font-family: inherit; padding: 0;
+  }
+  .move-btn:hover { border-color: var(--accent); color: var(--accent); }
+
   /* === FOOTER === */
   .footer {
     margin-top: 14px; padding: 10px 0;
@@ -1379,7 +1389,37 @@ function cell(d, dd, ei) {
     }
   }
 
+  // === MOVE LEFT/RIGHT BUTTONS ===
+  if (!isPast && dd.exercises.length > 1) {
+    const mr = document.createElement('div'); mr.className = 'move-row';
+    if (ei > 0) {
+      const lb = document.createElement('button'); lb.className = 'move-btn'; lb.textContent = '\u25C0';
+      lb.title = 'Move left';
+      ((idx, dayDate) => { lb.onclick = () => { moveExercise(dayDate, idx, -1); }; })(ei, new Date(d));
+      mr.appendChild(lb);
+    }
+    if (ei < dd.exercises.length - 1) {
+      const rb = document.createElement('button'); rb.className = 'move-btn'; rb.textContent = '\u25B6';
+      rb.title = 'Move right';
+      ((idx, dayDate) => { rb.onclick = () => { moveExercise(dayDate, idx, 1); }; })(ei, new Date(d));
+      mr.appendChild(rb);
+    }
+    c.appendChild(mr);
+  }
+
   return c;
+}
+
+/** Swap exercise at index `ei` with its neighbor (dir: -1 = left, +1 = right) */
+function moveExercise(d, ei, dir) {
+  const key = dk(d);
+  const dayData = state.days[key];
+  const target = ei + dir;
+  if (!dayData || target < 0 || target >= dayData.exercises.length) return;
+  const tmp = dayData.exercises[ei];
+  dayData.exercises[ei] = dayData.exercises[target];
+  dayData.exercises[target] = tmp;
+  save(); render();
 }
 
 // ============================================================================
