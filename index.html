@@ -249,14 +249,6 @@
   .sets-row input:focus { border-color: var(--accent); }
   .sets-row input::placeholder { color: var(--text3); opacity: .3; font-size: 10px; }
 
-  /* === TOTAL REPS ROW — shows sum of all sets + past week totals === */
-  .total-row {
-    font-family: 'JetBrains Mono', monospace; font-size: 9px;
-    margin-top: 2px; text-align: center; line-height: 1.3;
-  }
-  .total-cur { color: var(--green); font-weight: 600; }
-  .total-past { color: var(--text3); margin-left: 4px; }
-
   /* === ADD/REMOVE EXERCISE BUTTONS — circular +/− at end of each row === */
   .add-ex-cell {
     width: 28px; min-width: 28px; display: flex; flex-direction: column;
@@ -1079,11 +1071,17 @@ function getSets(d, name, offset) {
   return best;
 }
 
-/** Format a sets array as "26 · 23 · 20" for display. Returns null if no data. */
+/** Format a sets array as "26 · 23 · 20" for display. Returns null if no data.
+ *  Appends " = {sum}" when multiple sets are all filled with numbers. */
 function fmtSets(s) {
   if (!s) return null;
   if (!s.some(v => v)) return null;
-  return s.map(v => v || '–').join(' · ');
+  const formatted = s.map(v => v || '–').join(' · ');
+  if (s.length > 1 && s.every(v => v && !isNaN(parseInt(v)))) {
+    const total = s.reduce((a, v) => a + (parseInt(v) || 0), 0);
+    return formatted + ' = ' + total;
+  }
+  return formatted;
 }
 
 /**
@@ -1325,10 +1323,11 @@ function cell(d, dd, ei) {
   c.appendChild(sel);
 
   // === HISTORY LINES (-2w, -1w, now) ===
+  // "now" line element kept as reference for live updates from set inputs
+  let nowLine = null;
   if (ex.name) {
     const w2 = getSets(d, ex.name, -2);  // 2 weeks ago
     const w1 = getSets(d, ex.name, -1);  // 1 week ago
-    const tw = ex.sets && ex.sets.some(s => s) ? ex.sets : null;  // this week (current data)
 
     const l2 = document.createElement('div'); l2.className = 'wk-line';
     l2.innerHTML = '<span class="wk-label">-2w:</span>' +
@@ -1340,12 +1339,16 @@ function cell(d, dd, ei) {
       (w1 && fmtSets(w1) ? '<span class="wk-val">' + fmtSets(w1) + '</span>' : '<span class="wk-none">–</span>');
     c.appendChild(l1);
 
-    // "now" line only shown if current week has data
+    // "now" line — always created, updated live from set inputs
+    nowLine = document.createElement('div'); nowLine.className = 'wk-line';
+    const tw = ex.sets && ex.sets.some(s => s) ? ex.sets : null;
     if (tw && fmtSets(tw)) {
-      const lt = document.createElement('div'); lt.className = 'wk-line';
-      lt.innerHTML = '<span class="wk-label">now:</span><span class="wk-val cur">' + fmtSets(tw) + '</span>';
-      c.appendChild(lt);
+      nowLine.innerHTML = '<span class="wk-label">now:</span><span class="wk-val cur">' + fmtSets(tw) + '</span>';
+    } else {
+      nowLine.style.display = 'none';
+      nowLine.innerHTML = '<span class="wk-label">now:</span><span class="wk-val cur"></span>';
     }
+    c.appendChild(nowLine);
   } else {
     // No exercise selected — show empty history placeholders
     ['-2w:', '-1w:'].forEach(lbl => {
@@ -1360,7 +1363,6 @@ function cell(d, dd, ei) {
   const numSets = ex.name ? getSetCount(ex.name) : 3;
   ex.sets = normalizeSets(ex.sets, ex.name);
 
-  let _updateTotal = null;  // assigned after sets-row, called from oninput
   const sr = document.createElement('div'); sr.className = 'sets-row';
   for (let si = 0; si < numSets; si++) {
     const inp = document.createElement('input');
@@ -1368,45 +1370,24 @@ function cell(d, dd, ei) {
     inp.placeholder = 'S' + (si + 1);
     inp.value = ex.sets[si] || '';
     if (isPast) { inp.readOnly = true; }
-    // Save instantly on every keystroke
+    // Save instantly on every keystroke + update "now" line live
     inp.oninput = () => {
       state.days[key].exercises[ei].sets[si] = inp.value;
       save();
-      if (_updateTotal) _updateTotal();
+      if (nowLine) {
+        const sets = state.days[key].exercises[ei].sets;
+        const fmt = fmtSets(sets.slice(0, numSets));
+        if (fmt) {
+          nowLine.style.display = '';
+          nowLine.innerHTML = '<span class="wk-label">now:</span><span class="wk-val cur">' + fmt + '</span>';
+        } else {
+          nowLine.style.display = 'none';
+        }
+      }
     };
     sr.appendChild(inp);
   }
   c.appendChild(sr);
-
-  // === TOTAL REPS DISPLAY (live-updating) ===
-  // Shows Σ of all sets for current + past weeks when all sets are filled
-  if (ex.name && numSets > 1) {
-    const totalDiv = document.createElement('div');
-    totalDiv.className = 'total-row';
-    totalDiv.style.display = 'none';
-
-    // Pre-compute past week totals (static)
-    const w2sets = getSets(d, ex.name, -2);
-    const w1sets = getSets(d, ex.name, -1);
-    const w2sum = w2sets ? w2sets.reduce((a, v) => a + (parseInt(v) || 0), 0) : null;
-    const w1sum = w1sets ? w1sets.reduce((a, v) => a + (parseInt(v) || 0), 0) : null;
-
-    // Update total display — called on each keystroke and initial render
-    _updateTotal = () => {
-      const sets = state.days[key].exercises[ei].sets;
-      const allFilled = sets && sets.slice(0, numSets).every(v => v && !isNaN(parseInt(v)));
-      if (!allFilled) { totalDiv.style.display = 'none'; return; }
-      totalDiv.style.display = '';
-      const curSum = sets.slice(0, numSets).reduce((a, v) => a + (parseInt(v) || 0), 0);
-      let html = '<span class="total-cur">\u03A3' + curSum + '</span>';
-      if (w1sum) html += '<span class="total-past"> -1w:' + w1sum + '</span>';
-      if (w2sum) html += '<span class="total-past"> -2w:' + w2sum + '</span>';
-      totalDiv.innerHTML = html;
-    };
-
-    _updateTotal();
-    c.appendChild(totalDiv);
-  }
 
   // === MASTERY INDICATOR ===
   if (ex.name) {
