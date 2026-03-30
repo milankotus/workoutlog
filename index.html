@@ -1025,6 +1025,49 @@ function propagateExerciseChange(d, ei, oldName, newName) {
 }
 
 /**
+ * Propagate exercise row removal to future weeks and update the saved plan.
+ * Pops the last exercise from all future days with the same day-of-week.
+ */
+function propagateRemoveExercise(d) {
+  const dow = d.getDay();
+  const changedKey = dk(d);
+  if (!state.plan) state.plan = {};
+  const base = PLAN[dow] || [];
+  if (!state.plan[dow]) state.plan[dow] = [...base];
+  if (state.plan[dow].length > 0) state.plan[dow].pop();
+  for (const [key, dayData] of Object.entries(state.days)) {
+    if (key <= changedKey) continue;
+    const [y, m, day] = key.split('-').map(Number);
+    if (new Date(y, m - 1, day).getDay() !== dow) continue;
+    if (dayData.exercises && dayData.exercises.length > 0) {
+      dayData.exercises.pop();
+      if (dayData.exercises.length === 0) dayData.noExercises = true;
+    }
+  }
+}
+
+/**
+ * Propagate exercise row addition to future weeks and update the saved plan.
+ * Pushes an empty exercise slot to all future days with the same day-of-week.
+ */
+function propagateAddExercise(d) {
+  const dow = d.getDay();
+  const changedKey = dk(d);
+  if (!state.plan) state.plan = {};
+  if (!state.plan[dow]) state.plan[dow] = [...(PLAN[dow] || [])];
+  state.plan[dow].push('');
+  for (const [key, dayData] of Object.entries(state.days)) {
+    if (key <= changedKey) continue;
+    const [y, m, day] = key.split('-').map(Number);
+    if (new Date(y, m - 1, day).getDay() !== dow) continue;
+    if (dayData.exercises) {
+      delete dayData.noExercises;
+      dayData.exercises.push({ name: '', sets: ['','',''] });
+    }
+  }
+}
+
+/**
  * Look up the best recorded sets for a given exercise across an entire week,
  * offset by N weeks from the week containing date d.
  * offset=-1 means "last week", offset=-2 means "two weeks ago".
@@ -1226,9 +1269,11 @@ function render() {
 
     // +/− buttons for adding/removing exercises (max 8 per day).
     // capturedDate is needed because the loop variable `d` gets mutated on next iteration.
+    // Only shown for today and future days (past days are locked).
     const btns = document.createElement('div');
     btns.className = 'add-ex-cell';
-    if (dd.exercises.length < 8) {
+    const isPast = d < today;
+    if (!isPast && dd.exercises.length < 8) {
       const ab = document.createElement('button');
       ab.className = 'add-ex-btn'; ab.textContent = '+';
       const capturedDate = new Date(d);
@@ -1236,12 +1281,13 @@ function render() {
         const dayData = ensureDay(capturedDate);
         delete dayData.noExercises;  // Clear the "intentionally empty" flag
         dayData.exercises.push({ name: '', sets: ['','',''] });
+        propagateAddExercise(capturedDate);
         save(); render();
       };
       btns.appendChild(ab);
     }
     // Show − button when there's at least 1 exercise (allows going to zero)
-    if (dd.exercises.length > 0) {
+    if (!isPast && dd.exercises.length > 0) {
       const rb = document.createElement('button');
       rb.className = 'rm-ex-btn'; rb.textContent = '−';
       const capturedDate = new Date(d);
@@ -1250,6 +1296,7 @@ function render() {
         dayData.exercises.pop();
         // Mark day as intentionally empty so ensureDay() won't re-seed from PLAN
         if (dayData.exercises.length === 0) dayData.noExercises = true;
+        propagateRemoveExercise(capturedDate);
         save(); render();
       };
       btns.appendChild(rb);
@@ -1268,11 +1315,13 @@ function render() {
 function cell(d, dd, ei) {
   const ex = dd.exercises[ei];
   const key = dk(d);
+  const isPast = d < today;
   const c = document.createElement('div');
   c.className = 'exercise-cell';
 
   // === EXERCISE DROPDOWN ===
   const sel = document.createElement('select');
+  if (isPast) sel.disabled = true;
   sel.innerHTML = '<option value="">— exercise —</option>';
   state.exercises.forEach(e => {
     const o = document.createElement('option');
@@ -1288,7 +1337,7 @@ function cell(d, dd, ei) {
     // Resize sets array to match new exercise's configured set count
     dd.exercises[ei].sets = normalizeSets(dd.exercises[ei].sets, newName);
     // Propagate to future weeks (same day-of-week, same slot)
-    if (newName) propagateExerciseChange(d, ei, oldName, newName);
+    propagateExerciseChange(d, ei, oldName, newName);
     save(); render();
   };
   c.appendChild(sel);
@@ -1335,6 +1384,7 @@ function cell(d, dd, ei) {
     inp.type = 'text';
     inp.placeholder = 'S' + (si + 1);
     inp.value = ex.sets[si] || '';
+    if (isPast) { inp.readOnly = true; }
     // Save instantly on every keystroke
     inp.oninput = () => {
       state.days[key].exercises[ei].sets[si] = inp.value;
