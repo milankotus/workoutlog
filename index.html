@@ -396,6 +396,22 @@
   }
   .manage-close:hover { border-color: var(--accent); color: var(--accent2); }
   .manage-hint { font-size: 11px; color: var(--text3); margin-bottom: 10px; }
+  .manage-item .archive-btn {
+    background: none; border: none; color: var(--text3); cursor: pointer;
+    font-size: 12px; padding: 0 4px; transition: all .15s;
+  }
+  .manage-item .archive-btn:hover { color: var(--orange); }
+  .archived-toggle {
+    font-size: 11px; color: var(--text3); cursor: pointer; margin-top: 10px;
+    background: none; border: none; font-family: inherit; padding: 0;
+  }
+  .archived-toggle:hover { color: var(--accent2); }
+  .archived-list .manage-item { opacity: 0.6; }
+  .archived-list .manage-item .restore-btn {
+    background: none; border: none; color: var(--text3); cursor: pointer;
+    font-size: 11px; padding: 2px 6px; transition: all .15s;
+  }
+  .archived-list .manage-item .restore-btn:hover { color: var(--green); }
 
   /* === CARDIO CELL — running + rucking inputs per day === */
   .cardio-cell {
@@ -650,6 +666,8 @@
     <h3>Manage exercises</h3>
     <div class="manage-hint">Use − / + to set number of sets per exercise. Goal = reps to master before progressing.</div>
     <div id="manageList"></div>
+    <button class="archived-toggle" id="archivedToggle" style="display:none" onclick="toggleArchivedList()"></button>
+    <div id="archivedList" class="archived-list" style="display:none"></div>
     <div class="manage-add">
       <input type="text" id="newExName" placeholder="New exercise..." onkeydown="if(event.key==='Enter')addExercise()">
       <label><input type="checkbox" id="newExRings"> ⊙</label>
@@ -1340,6 +1358,8 @@ function cell(d, dd, ei) {
   if (isPast) sel.disabled = true;
   sel.innerHTML = '<option value="">— exercise —</option>';
   state.exercises.forEach(e => {
+    // Hide archived exercises from dropdown (unless currently selected on this day)
+    if (e.archived && e.name !== ex.name) return;
     const o = document.createElement('option');
     o.value = e.name;
     o.textContent = e.name + (e.rings ? ' ⊙' : '');
@@ -1535,12 +1555,13 @@ function closeManage() {
   document.getElementById('manageOverlay').classList.remove('open');
 }
 
-/** Renders the exercise list inside the manage modal */
+/** Renders the exercise list inside the manage modal (active + archived sections) */
 function renderManage() {
   const list = document.getElementById('manageList');
   list.innerHTML = '';
 
   state.exercises.forEach((ex, i) => {
+    if (ex.archived) return; // archived shown separately below
     const item = document.createElement('div'); item.className = 'manage-item';
 
     // Exercise name (click to rename inline)
@@ -1617,6 +1638,14 @@ function renderManage() {
     mcfg.appendChild(mInput);
     item.appendChild(mcfg);
 
+    // Archive button
+    const arch = document.createElement('button'); arch.className = 'archive-btn'; arch.textContent = '\u{1F4E6}';
+    arch.title = 'Archive';
+    arch.onclick = () => {
+      ex.archived = true; save(); renderManage(); render();
+    };
+    item.appendChild(arch);
+
     // Delete button
     const del = document.createElement('button'); del.className = 'del-btn'; del.textContent = '×';
     del.onclick = () => {
@@ -1628,6 +1657,75 @@ function renderManage() {
 
     list.appendChild(item);
   });
+
+  // Archived exercises section
+  renderArchivedList();
+}
+
+/** Render the archived exercises toggle and list */
+function renderArchivedList() {
+  const archived = state.exercises.filter(e => e.archived);
+  const toggle = document.getElementById('archivedToggle');
+  const container = document.getElementById('archivedList');
+
+  if (archived.length === 0) {
+    toggle.style.display = 'none';
+    container.style.display = 'none';
+    return;
+  }
+
+  toggle.style.display = '';
+  toggle.textContent = (container.style.display === 'none' ? '\u25B6' : '\u25BC') + ' Archived exercises (' + archived.length + ')';
+
+  container.innerHTML = '';
+  if (container.style.display === 'none') return;
+
+  archived.forEach(ex => {
+    const item = document.createElement('div'); item.className = 'manage-item';
+
+    const name = document.createElement('span');
+    name.className = 'ex-name'; name.textContent = ex.name;
+    name.style.cursor = 'default';
+    item.appendChild(name);
+
+    if (ex.rings) {
+      const b = document.createElement('span');
+      b.className = 'ring-badge'; b.textContent = '\u2299';
+      item.appendChild(b);
+    }
+
+    const info = document.createElement('span');
+    info.style.cssText = 'font-size:10px;color:var(--text3);margin-left:auto';
+    info.textContent = (ex.sets || 3) + ' sets' + (ex.masteryReps ? ' · goal ' + ex.masteryReps : '');
+    item.appendChild(info);
+
+    // Restore button
+    const restore = document.createElement('button'); restore.className = 'restore-btn'; restore.textContent = 'Restore';
+    restore.onclick = () => {
+      delete ex.archived; save(); renderManage(); render();
+    };
+    item.appendChild(restore);
+
+    // Delete button
+    const del = document.createElement('button'); del.className = 'del-btn'; del.textContent = '\u00D7';
+    del.onclick = () => {
+      if (confirm('Permanently remove "' + ex.name + '"?')) {
+        const idx = state.exercises.indexOf(ex);
+        if (idx !== -1) state.exercises.splice(idx, 1);
+        save(); renderManage();
+      }
+    };
+    item.appendChild(del);
+
+    container.appendChild(item);
+  });
+}
+
+/** Toggle visibility of the archived exercises list */
+function toggleArchivedList() {
+  const container = document.getElementById('archivedList');
+  container.style.display = container.style.display === 'none' ? '' : 'none';
+  renderArchivedList();
 }
 
 /** Add a new exercise from the input fields in the manage modal */
