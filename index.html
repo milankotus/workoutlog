@@ -1989,9 +1989,9 @@ function renderActivities() {
 function addActivity() {
   if (!actModalDate) return;
   const type = document.getElementById('actType').value;
-  const km = document.getElementById('actKm').value.trim();
-  const min = document.getElementById('actMin').value.trim();
-  const kg = document.getElementById('actKg').value.trim();
+  const km = normalizeNum(document.getElementById('actKm').value.trim());
+  const min = normalizeNum(document.getElementById('actMin').value.trim());
+  const kg = normalizeNum(document.getElementById('actKg').value.trim());
   if (!km && !min) return;
   const day = state.days[actModalDate];
   if (!day.activities) day.activities = [];
