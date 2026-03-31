@@ -1193,7 +1193,13 @@ function calcDayProtein(dateKey) {
 // RENDER — builds the entire week grid
 // ============================================================================
 
+var _rendering = false;
 function render() {
+  // Guard against reentrant calls (e.g. grid.innerHTML='' triggers onchange on
+  // destroyed inputs, which calls onEdit → render() again inside this render)
+  if (_rendering) return;
+  _rendering = true;
+
   // Preserve focus across re-render: save which input was focused + cursor position
   var focused = document.activeElement;
   var focusId = focused && focused.dataset && focused.dataset.focusId || null;
@@ -1347,6 +1353,8 @@ function render() {
     row.appendChild(exRow);
     grid.appendChild(row);
   }
+
+  _rendering = false;
 
   // Restore focus to the same input after re-render
   if (focusId) {
