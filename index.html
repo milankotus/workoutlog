@@ -493,6 +493,19 @@
   }
   .meal-add input:focus { border-color: var(--accent); }
   .meal-add .meal-name-inp { flex: 1; }
+  .meal-name-wrap { position: relative; flex: 1; display: flex; }
+  .meal-name-wrap .meal-name-inp { width: 100%; }
+  .meal-dropdown {
+    display: none; position: absolute; top: 100%; left: 0; right: 0;
+    background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius-sm);
+    max-height: 150px; overflow-y: auto; z-index: 10; margin-top: 2px;
+  }
+  .meal-dropdown-item {
+    padding: 7px 8px; font-size: 12px; cursor: pointer; color: var(--text);
+  }
+  .meal-dropdown-item:active, .meal-dropdown-item.active {
+    background: var(--accent); color: var(--bg);
+  }
   .meal-add .meal-kcal-inp { width: 70px; text-align: center; font-family: 'JetBrains Mono', monospace; }
   .meal-add .meal-prot-inp { width: 55px; text-align: center; font-family: 'JetBrains Mono', monospace; }
   .meal-add .meal-add-btn {
@@ -685,8 +698,10 @@
     <div class="meal-date" id="mealDate"></div>
     <div id="mealList"></div>
     <div class="meal-add">
-      <input type="text" class="meal-name-inp" id="mealNameInp" placeholder="Meal name..." list="mealSuggestions" autocomplete="off" oninput="autofillMealKcal()" onkeydown="if(event.key==='Enter')document.getElementById('mealKcalInp').focus()">
-      <datalist id="mealSuggestions"></datalist>
+      <div class="meal-name-wrap">
+        <input type="text" class="meal-name-inp" id="mealNameInp" placeholder="Meal name..." autocomplete="off" oninput="autofillMealKcal();filterMealSuggestions()" onfocus="filterMealSuggestions()" onblur="setTimeout(closeMealDropdown,200)" onkeydown="if(event.key==='Enter'){closeMealDropdown();document.getElementById('mealKcalInp').focus()}else if(event.key==='Escape')closeMealDropdown()">
+        <div id="mealDropdown" class="meal-dropdown"></div>
+      </div>
       <input type="text" inputmode="decimal" class="meal-kcal-inp" id="mealKcalInp" placeholder="kCal" oninput="this.value=normalizeNum(this.value)" onkeydown="if(event.key==='Enter')document.getElementById('mealProtInp').focus()">
       <input type="text" inputmode="decimal" class="meal-prot-inp" id="mealProtInp" placeholder="g prot" oninput="this.value=normalizeNum(this.value)" onkeydown="if(event.key==='Enter')addMeal()">
       <button class="meal-add-btn" onclick="addMeal()">Add</button>
@@ -1771,6 +1786,7 @@ function openMeals(dateKey) {
 
 function closeMeals() {
   document.getElementById('mealOverlay').classList.remove('open');
+  closeMealDropdown();
   mealModalDate = null;
 }
 
@@ -1905,18 +1921,40 @@ function getMealMap() {
   return map;
 }
 
-/** Build datalist options from the top 15 most frequent historical meals. */
-function buildMealSuggestions() {
+/** No-op — replaced by custom dropdown (filterMealSuggestions). Kept for call-site compat. */
+function buildMealSuggestions() {}
+
+/** Show filtered meal suggestions dropdown below the name input. */
+function filterMealSuggestions() {
+  const input = document.getElementById('mealNameInp');
+  const dropdown = document.getElementById('mealDropdown');
+  const query = input.value.trim().toLowerCase();
   const map = getMealMap();
-  const top = Object.values(map).sort((a, b) => b.count - a.count).slice(0, 15);
-  const dl = document.getElementById('mealSuggestions');
-  dl.innerHTML = '';
-  for (const entry of top) {
-    const opt = document.createElement('option');
-    opt.value = entry.name;
-    opt.label = entry.name + ' — ' + fmtNum(entry.kcal) + ' kCal / ' + fmtNum(entry.protein) + 'g';
-    dl.appendChild(opt);
-  }
+  let entries = Object.values(map).sort((a, b) => b.count - a.count);
+  if (query) entries = entries.filter(e => e.name.toLowerCase().includes(query));
+  entries = entries.slice(0, 15);
+  if (!entries.length) { dropdown.style.display = 'none'; return; }
+  dropdown.innerHTML = '';
+  entries.forEach(entry => {
+    const div = document.createElement('div');
+    div.className = 'meal-dropdown-item';
+    div.textContent = entry.name + ' \u2014 ' + fmtNum(entry.kcal) + ' kCal / ' + fmtNum(entry.protein) + 'g';
+    div.onpointerdown = (e) => {
+      e.preventDefault();
+      input.value = entry.name;
+      document.getElementById('mealKcalInp').value = entry.kcal;
+      document.getElementById('mealProtInp').value = entry.protein || '';
+      dropdown.style.display = 'none';
+      document.getElementById('mealKcalInp').focus();
+    };
+    dropdown.appendChild(div);
+  });
+  dropdown.style.display = 'block';
+}
+
+/** Hide the meal suggestions dropdown. */
+function closeMealDropdown() {
+  document.getElementById('mealDropdown').style.display = 'none';
 }
 
 /** Toggle the saved meals management list. */
