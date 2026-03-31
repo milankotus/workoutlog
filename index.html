@@ -1194,6 +1194,12 @@ function calcDayProtein(dateKey) {
 // ============================================================================
 
 function render() {
+  // Preserve focus across re-render: save which input was focused + cursor position
+  var focused = document.activeElement;
+  var focusId = focused && focused.dataset && focused.dataset.focusId || null;
+  var selStart = focused && focused.selectionStart;
+  var selEnd = focused && focused.selectionEnd;
+
   const grid = document.getElementById('planGrid');
   grid.innerHTML = '';
 
@@ -1236,9 +1242,9 @@ function render() {
     const weightRow = document.createElement('div'); weightRow.className = 'cardio-row';
     const weightIcon = document.createElement('span'); weightIcon.className = 'cardio-icon'; weightIcon.textContent = '\u{2696}';
     const weightInp = document.createElement('input'); weightInp.type = 'text'; weightInp.inputMode = 'decimal';
+    weightInp.dataset.focusId = 'weight-' + cardioKey;
     weightInp.placeholder = 'kg'; weightInp.value = dayData.weight || '';
-    weightInp.oninput = () => { weightInp.value = normalizeNum(weightInp.value); state.days[cardioKey].weight = weightInp.value; save(); };
-    weightInp.onblur = () => render();
+    weightInp.oninput = () => { weightInp.value = normalizeNum(weightInp.value); state.days[cardioKey].weight = weightInp.value; save(); render(); };
     const weightUnit = document.createElement('span'); weightUnit.className = 'cardio-unit'; weightUnit.textContent = 'kg';
     weightRow.appendChild(weightIcon); weightRow.appendChild(weightInp); weightRow.appendChild(weightUnit);
     calCell.appendChild(weightRow);
@@ -1247,8 +1253,9 @@ function render() {
     const waistRow = document.createElement('div'); waistRow.className = 'cardio-row';
     const waistIcon = document.createElement('span'); waistIcon.className = 'cardio-icon'; waistIcon.textContent = '\u{1F4CF}';
     const waistInp = document.createElement('input'); waistInp.type = 'text'; waistInp.inputMode = 'decimal';
+    waistInp.dataset.focusId = 'waist-' + cardioKey;
     waistInp.placeholder = 'cm'; waistInp.value = dayData.waist || '';
-    waistInp.oninput = () => { waistInp.value = normalizeNum(waistInp.value); state.days[cardioKey].waist = waistInp.value; save(); };
+    waistInp.oninput = () => { waistInp.value = normalizeNum(waistInp.value); state.days[cardioKey].waist = waistInp.value; save(); render(); };
     const waistUnit = document.createElement('span'); waistUnit.className = 'cardio-unit'; waistUnit.textContent = 'cm';
     waistRow.appendChild(waistIcon); waistRow.appendChild(waistInp); waistRow.appendChild(waistUnit);
     calCell.appendChild(waistRow);
@@ -1340,6 +1347,17 @@ function render() {
     row.appendChild(exRow);
     grid.appendChild(row);
   }
+
+  // Restore focus to the same input after re-render
+  if (focusId) {
+    var el = document.querySelector('[data-focus-id="' + focusId + '"]');
+    if (el) {
+      el.focus();
+      if (typeof selStart === 'number') {
+        try { el.selectionStart = selStart; el.selectionEnd = selEnd; } catch(e) {}
+      }
+    }
+  }
 }
 
 /**
@@ -1376,8 +1394,6 @@ function cell(d, dd, ei) {
 
   // === HISTORY LINES (-2, -1, now) ===
   // Shows the last 2 recorded sessions of this exercise (any day), plus current.
-  // "now" line element kept as reference for live updates from set inputs.
-  let nowLine = null;
   if (ex.name) {
     const recent = getRecentSets(dk(d), ex.name, 2);
     const prev1 = recent[0] || null;  // most recent previous session
@@ -1393,8 +1409,7 @@ function cell(d, dd, ei) {
       (prev1 && fmtSets(prev1) ? '<span class="wk-val">' + fmtSets(prev1) + '</span>' : '<span class="wk-none">–</span>');
     c.appendChild(l1);
 
-    // "now" line — always created, updated live from set inputs
-    nowLine = document.createElement('div'); nowLine.className = 'wk-line';
+    const nowLine = document.createElement('div'); nowLine.className = 'wk-line';
     const tw = ex.sets && ex.sets.some(s => s) ? ex.sets : null;
     if (tw && fmtSets(tw)) {
       nowLine.innerHTML = '<span class="wk-label">now:</span><span class="wk-val cur">' + fmtSets(tw) + '</span>';
@@ -1421,27 +1436,18 @@ function cell(d, dd, ei) {
   for (let si = 0; si < numSets; si++) {
     const inp = document.createElement('input');
     inp.type = 'text';
+    inp.dataset.focusId = 'set-' + key + '-' + ei + '-' + si;
     inp.placeholder = 'S' + (si + 1);
     inp.value = ex.sets[si] || '';
     if (isPast) { inp.readOnly = true; }
-    // Save instantly on every keystroke + update "now" line live
-    const updateNow = () => {
+    // Save on every keystroke + full re-render (updates now line, mastery, etc.)
+    const onEdit = () => {
       inp.value = normalizeNum(inp.value);
       state.days[key].exercises[ei].sets[si] = inp.value;
-      save();
-      if (nowLine) {
-        const sets = state.days[key].exercises[ei].sets;
-        const fmt = fmtSets(sets.slice(0, numSets));
-        if (fmt) {
-          nowLine.style.display = '';
-          nowLine.innerHTML = '<span class="wk-label">now:</span><span class="wk-val cur">' + fmt + '</span>';
-        } else {
-          nowLine.style.display = 'none';
-        }
-      }
+      save(); render();
     };
-    inp.oninput = updateNow;
-    inp.onchange = updateNow;  // also fire on blur (mobile paste/autocomplete)
+    inp.oninput = onEdit;
+    inp.onchange = onEdit;
     sr.appendChild(inp);
   }
   c.appendChild(sr);
