@@ -81,7 +81,7 @@
 
     Each exercise cell contains:
       - Dropdown (select from master exercise list)
-      - History lines: -2w (2 weeks ago), -1w (last week), now (current, green)
+      - History lines: -2 (2nd previous session), -1 (previous session), now (current, green)
         Each line shows individual set values + total reps when all sets filled
         (e.g. "26 · 23 · 20 = 69"). The "now" line updates live on each keystroke.
       - Set input fields (number depends on exercise's configured set count)
@@ -233,7 +233,7 @@
   }
   .exercise-cell select:focus { border-color: var(--accent); }
 
-  /* === HISTORY LINES — show -2w, -1w, now data === */
+  /* === HISTORY LINES — show -2, -1, now data === */
   .wk-line {
     font-family: 'JetBrains Mono', monospace; font-size: 9px;
     display: flex; align-items: center; gap: 3px; line-height: 1.4;
@@ -1071,22 +1071,22 @@ function propagateDayPlan(d) {
  * Scans Mon–Sun of the target week, returns the sets array with the highest
  * total reps, or null if the exercise wasn't done that week.
  */
-function getSets(d, name, offset) {
-  const mon = getMonday(d);
-  mon.setDate(mon.getDate() + offset * 7);
-  let best = null, bestSum = -1;
-  for (let i = 0; i < 7; i++) {
-    const day = new Date(mon);
-    day.setDate(mon.getDate() + i);
-    const dd = state.days[dk(day)];
-    if (!dd || !dd.exercises) continue;
-    for (const ex of dd.exercises) {
-      if (ex.name !== name || !ex.sets || !ex.sets.some(s => s)) continue;
-      const sum = ex.sets.reduce((a, v) => a + (parseInt(v) || 0), 0);
-      if (sum > bestSum) { best = ex.sets; bestSum = sum; }
+/** Find the most recent N recorded sessions of exercise `name` before `dateKey`.
+ *  Returns array of sets arrays, most recent first (index 0 = previous, 1 = one before that). */
+function getRecentSets(dateKey, name, n) {
+  var results = [];
+  var allDates = Object.keys(state.days).filter(function(k) { return k < dateKey; }).sort().reverse();
+  for (var di = 0; di < allDates.length && results.length < n; di++) {
+    var day = state.days[allDates[di]];
+    if (!day || !day.exercises) continue;
+    for (var ei = 0; ei < day.exercises.length; ei++) {
+      var ex = day.exercises[ei];
+      if (ex.name !== name || !ex.sets || !ex.sets.some(function(s) { return s; })) continue;
+      results.push(ex.sets);
+      break;
     }
   }
-  return best;
+  return results;
 }
 
 /** Format a sets array as "26 · 23 · 20" for display. Returns null if no data.
@@ -1326,7 +1326,7 @@ function render() {
 
 /**
  * Creates a single exercise cell for a given day and exercise index.
- * Contains: dropdown, history lines (-2w, -1w, now), and set input fields.
+ * Contains: dropdown, history lines (-2, -1, now), and set input fields.
  */
 function cell(d, dd, ei) {
   const ex = dd.exercises[ei];
@@ -1354,21 +1354,23 @@ function cell(d, dd, ei) {
   };
   c.appendChild(sel);
 
-  // === HISTORY LINES (-2w, -1w, now) ===
-  // "now" line element kept as reference for live updates from set inputs
+  // === HISTORY LINES (-2, -1, now) ===
+  // Shows the last 2 recorded sessions of this exercise (any day), plus current.
+  // "now" line element kept as reference for live updates from set inputs.
   let nowLine = null;
   if (ex.name) {
-    const w2 = getSets(d, ex.name, -2);  // 2 weeks ago
-    const w1 = getSets(d, ex.name, -1);  // 1 week ago
+    const recent = getRecentSets(dk(d), ex.name, 2);
+    const prev1 = recent[0] || null;  // most recent previous session
+    const prev2 = recent[1] || null;  // second most recent
 
     const l2 = document.createElement('div'); l2.className = 'wk-line';
-    l2.innerHTML = '<span class="wk-label">-2w:</span>' +
-      (w2 && fmtSets(w2) ? '<span class="wk-val">' + fmtSets(w2) + '</span>' : '<span class="wk-none">–</span>');
+    l2.innerHTML = '<span class="wk-label">-2:</span>' +
+      (prev2 && fmtSets(prev2) ? '<span class="wk-val">' + fmtSets(prev2) + '</span>' : '<span class="wk-none">–</span>');
     c.appendChild(l2);
 
     const l1 = document.createElement('div'); l1.className = 'wk-line';
-    l1.innerHTML = '<span class="wk-label">-1w:</span>' +
-      (w1 && fmtSets(w1) ? '<span class="wk-val">' + fmtSets(w1) + '</span>' : '<span class="wk-none">–</span>');
+    l1.innerHTML = '<span class="wk-label">-1:</span>' +
+      (prev1 && fmtSets(prev1) ? '<span class="wk-val">' + fmtSets(prev1) + '</span>' : '<span class="wk-none">–</span>');
     c.appendChild(l1);
 
     // "now" line — always created, updated live from set inputs
@@ -1383,7 +1385,7 @@ function cell(d, dd, ei) {
     c.appendChild(nowLine);
   } else {
     // No exercise selected — show empty history placeholders
-    ['-2w:', '-1w:'].forEach(lbl => {
+    ['-2:', '-1:'].forEach(lbl => {
       const l = document.createElement('div'); l.className = 'wk-line';
       l.innerHTML = '<span class="wk-label">' + lbl + '</span><span class="wk-none">–</span>';
       c.appendChild(l);
