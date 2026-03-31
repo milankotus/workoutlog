@@ -653,7 +653,7 @@
     <div class="manage-add">
       <input type="text" id="newExName" placeholder="New exercise..." onkeydown="if(event.key==='Enter')addExercise()">
       <label><input type="checkbox" id="newExRings"> ⊙</label>
-      <input type="number" id="newExMastery" min="0" max="999" placeholder="Goal" style="width:50px;font-family:inherit;font-size:12px;padding:5px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:var(--radius-sm);outline:none;" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
+      <input type="text" inputmode="numeric" id="newExMastery" placeholder="Goal" style="width:50px;font-family:inherit;font-size:12px;padding:5px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:var(--radius-sm);outline:none;" oninput="this.value=normalizeNum(this.value)" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
       <button class="add-btn" onclick="addExercise()">Add</button>
     </div>
     <button class="manage-close" onclick="closeManage()">Close</button>
@@ -669,8 +669,8 @@
     <div class="meal-add">
       <input type="text" class="meal-name-inp" id="mealNameInp" placeholder="Meal name..." list="mealSuggestions" autocomplete="off" oninput="autofillMealKcal()" onkeydown="if(event.key==='Enter')document.getElementById('mealKcalInp').focus()">
       <datalist id="mealSuggestions"></datalist>
-      <input type="text" class="meal-kcal-inp" id="mealKcalInp" placeholder="kCal" onkeydown="if(event.key==='Enter')document.getElementById('mealProtInp').focus()">
-      <input type="text" class="meal-prot-inp" id="mealProtInp" placeholder="g prot" onkeydown="if(event.key==='Enter')addMeal()">
+      <input type="text" inputmode="decimal" class="meal-kcal-inp" id="mealKcalInp" placeholder="kCal" oninput="this.value=normalizeNum(this.value)" onkeydown="if(event.key==='Enter')document.getElementById('mealProtInp').focus()">
+      <input type="text" inputmode="decimal" class="meal-prot-inp" id="mealProtInp" placeholder="g prot" oninput="this.value=normalizeNum(this.value)" onkeydown="if(event.key==='Enter')addMeal()">
       <button class="meal-add-btn" onclick="addMeal()">Add</button>
     </div>
     <div style="margin-top:4px;text-align:right">
@@ -690,9 +690,9 @@
     <div id="actList"></div>
     <div class="meal-add">
       <select id="actType" onchange="toggleActKg()"></select>
-      <input type="text" class="meal-kcal-inp" id="actKm" placeholder="km" style="width:60px" oninput="this.value=normalizeNum(this.value)" onkeydown="if(event.key==='Enter')document.getElementById('actMin').focus()">
-      <input type="text" class="meal-kcal-inp" id="actMin" placeholder="min" style="width:60px" oninput="this.value=normalizeNum(this.value)" onkeydown="if(event.key==='Enter'){if(document.getElementById('actKg').style.display!=='none')document.getElementById('actKg').focus();else addActivity();}">
-      <input type="text" class="meal-kcal-inp" id="actKg" placeholder="kg" style="width:60px;display:none" oninput="this.value=normalizeNum(this.value)" onkeydown="if(event.key==='Enter')addActivity()">
+      <input type="text" inputmode="decimal" class="meal-kcal-inp" id="actKm" placeholder="km" style="width:60px" oninput="this.value=normalizeNum(this.value)" onkeydown="if(event.key==='Enter')document.getElementById('actMin').focus()">
+      <input type="text" inputmode="decimal" class="meal-kcal-inp" id="actMin" placeholder="min" style="width:60px" oninput="this.value=normalizeNum(this.value)" onkeydown="if(event.key==='Enter'){if(document.getElementById('actKg').style.display!=='none')document.getElementById('actKg').focus();else addActivity();}">
+      <input type="text" inputmode="decimal" class="meal-kcal-inp" id="actKg" placeholder="kg" style="width:60px;display:none" oninput="this.value=normalizeNum(this.value)" onkeydown="if(event.key==='Enter')addActivity()">
       <button class="meal-add-btn" onclick="addActivity()">Add</button>
     </div>
     <div class="meal-totals" id="actTotals"></div>
@@ -1130,9 +1130,15 @@ function getMasteryStreak(exName, goal, numSets, upToDate) {
 // MEALS & ACTIVITIES
 // ============================================================================
 
-/** Normalize decimal separator: replace comma with dot so the value is a proper number.
-    Used for weight, waist, calories, protein — anywhere decimals are entered on mobile. */
-function normalizeNum(str) { return String(str).replace(',', '.'); }
+/** Normalize numeric input: replace comma with dot, strip non-numeric chars, keep only one dot.
+    Used for weight, waist, calories, protein, activity fields — anywhere numbers are entered. */
+function normalizeNum(str) {
+  var v = String(str).replace(/,/g, '.');
+  v = v.replace(/[^0-9.]/g, '');
+  var dot = v.indexOf('.');
+  if (dot !== -1) v = v.slice(0, dot + 1) + v.slice(dot + 1).replace(/\./g, '');
+  return v;
+}
 
 /** Format a number for display: show one decimal if fractional, otherwise whole number.
     e.g. 8 → "8", 8.5 → "8.5", 8.0 → "8" */
@@ -1211,7 +1217,7 @@ function render() {
     // Weight row
     const weightRow = document.createElement('div'); weightRow.className = 'cardio-row';
     const weightIcon = document.createElement('span'); weightIcon.className = 'cardio-icon'; weightIcon.textContent = '\u{2696}';
-    const weightInp = document.createElement('input'); weightInp.type = 'text';
+    const weightInp = document.createElement('input'); weightInp.type = 'text'; weightInp.inputMode = 'decimal';
     weightInp.placeholder = 'kg'; weightInp.value = dayData.weight || '';
     weightInp.oninput = () => { weightInp.value = normalizeNum(weightInp.value); state.days[cardioKey].weight = weightInp.value; save(); };
     weightInp.onblur = () => render();
@@ -1222,7 +1228,7 @@ function render() {
     // Waist row
     const waistRow = document.createElement('div'); waistRow.className = 'cardio-row';
     const waistIcon = document.createElement('span'); waistIcon.className = 'cardio-icon'; waistIcon.textContent = '\u{1F4CF}';
-    const waistInp = document.createElement('input'); waistInp.type = 'text';
+    const waistInp = document.createElement('input'); waistInp.type = 'text'; waistInp.inputMode = 'decimal';
     waistInp.placeholder = 'cm'; waistInp.value = dayData.waist || '';
     waistInp.oninput = () => { waistInp.value = normalizeNum(waistInp.value); state.days[cardioKey].waist = waistInp.value; save(); };
     const waistUnit = document.createElement('span'); waistUnit.className = 'cardio-unit'; waistUnit.textContent = 'cm';
@@ -1398,6 +1404,7 @@ function cell(d, dd, ei) {
     if (isPast) { inp.readOnly = true; }
     // Save instantly on every keystroke + update "now" line live
     const updateNow = () => {
+      inp.value = normalizeNum(inp.value);
       state.days[key].exercises[ei].sets[si] = inp.value;
       save();
       if (nowLine) {
@@ -1597,9 +1604,10 @@ function renderManage() {
     mLabel.textContent = 'goal';
     mcfg.appendChild(mLabel);
     const mInput = document.createElement('input');
-    mInput.type = 'number'; mInput.min = 0; mInput.max = 999;
+    mInput.type = 'text'; mInput.inputMode = 'numeric';
     mInput.placeholder = '–';
     mInput.value = ex.masteryReps || '';
+    mInput.oninput = () => { mInput.value = normalizeNum(mInput.value); };
     mInput.onchange = () => {
       ex.masteryReps = parseInt(mInput.value) || 0;
       save(); render();
@@ -1688,9 +1696,10 @@ function renderMeals() {
     const kcal = document.createElement('span'); kcal.className = 'meal-kcal'; kcal.textContent = fmtNum(meal.kcal) + ' kCal';
     kcal.style.cursor = 'pointer';
     kcal.onclick = () => {
-      const inp = document.createElement('input'); inp.type = 'text'; inp.value = meal.kcal;
+      const inp = document.createElement('input'); inp.type = 'text'; inp.inputMode = 'decimal'; inp.value = meal.kcal;
       inp.className = 'meal-kcal-inp'; inp.style.cssText = 'width:60px;text-align:center;font-size:12px;padding:2px 4px';
-      inp.onblur = () => { const v = parseFloat(normalizeNum(inp.value)); if (v > 0) meal.kcal = Math.round(v * 10) / 10; save(); renderMeals(); render(); };
+      inp.oninput = () => { inp.value = normalizeNum(inp.value); };
+      inp.onblur = () => { const v = parseFloat(inp.value); if (v > 0) meal.kcal = Math.round(v * 10) / 10; save(); renderMeals(); render(); };
       inp.onkeydown = (e) => { if (e.key === 'Enter') inp.blur(); };
       kcal.replaceWith(inp); inp.focus(); inp.select();
     };
@@ -1698,9 +1707,10 @@ function renderMeals() {
     const prot = document.createElement('span'); prot.className = 'meal-prot'; prot.textContent = fmtNum(meal.protein || 0) + 'g';
     prot.style.cursor = 'pointer';
     prot.onclick = () => {
-      const inp = document.createElement('input'); inp.type = 'text'; inp.value = meal.protein || '';
+      const inp = document.createElement('input'); inp.type = 'text'; inp.inputMode = 'decimal'; inp.value = meal.protein || '';
       inp.className = 'meal-prot-inp'; inp.style.cssText = 'width:45px;text-align:center;font-size:12px;padding:2px 4px';
-      inp.onblur = () => { meal.protein = Math.round((parseFloat(normalizeNum(inp.value)) || 0) * 10) / 10; save(); renderMeals(); render(); };
+      inp.oninput = () => { inp.value = normalizeNum(inp.value); };
+      inp.onblur = () => { meal.protein = Math.round((parseFloat(inp.value) || 0) * 10) / 10; save(); renderMeals(); render(); };
       inp.onkeydown = (e) => { if (e.key === 'Enter') inp.blur(); };
       prot.replaceWith(inp); inp.focus(); inp.select();
     };
@@ -1727,8 +1737,9 @@ function renderMeals() {
   const calGoalLabel = document.createElement('span'); calGoalLabel.className = 'label'; calGoalLabel.textContent = 'Calorie goal';
   const calGoalVal = document.createElement('span'); calGoalVal.className = 'value';
   const calGoalInp = document.createElement('input'); calGoalInp.className = 'goal-inp';
-  calGoalInp.type = 'number'; calGoalInp.min = 0; calGoalInp.placeholder = '—';
+  calGoalInp.type = 'text'; calGoalInp.inputMode = 'decimal'; calGoalInp.placeholder = '—';
   calGoalInp.value = state.goals.calories || '';
+  calGoalInp.oninput = () => { calGoalInp.value = normalizeNum(calGoalInp.value); };
   calGoalInp.onchange = () => { state.goals.calories = parseInt(calGoalInp.value) || 0; save(); renderMeals(); render(); };
   const calGoalUnit = document.createTextNode(' kCal');
   calGoalVal.appendChild(calGoalInp); calGoalVal.appendChild(calGoalUnit);
@@ -1747,8 +1758,9 @@ function renderMeals() {
   const protGoalLabel = document.createElement('span'); protGoalLabel.className = 'label'; protGoalLabel.textContent = 'Protein goal';
   const protGoalVal = document.createElement('span'); protGoalVal.className = 'value';
   const protGoalInp = document.createElement('input'); protGoalInp.className = 'goal-inp';
-  protGoalInp.type = 'number'; protGoalInp.min = 0; protGoalInp.placeholder = '—';
+  protGoalInp.type = 'text'; protGoalInp.inputMode = 'decimal'; protGoalInp.placeholder = '—';
   protGoalInp.value = state.goals.protein || '';
+  protGoalInp.oninput = () => { protGoalInp.value = normalizeNum(protGoalInp.value); };
   protGoalInp.onchange = () => { state.goals.protein = parseInt(protGoalInp.value) || 0; save(); renderMeals(); render(); };
   const protGoalUnit = document.createTextNode(' g');
   protGoalVal.appendChild(protGoalInp); protGoalVal.appendChild(protGoalUnit);
@@ -1963,9 +1975,10 @@ function renderActivities() {
       span.style.cssText = 'font-family:"JetBrains Mono",monospace;font-size:11px;color:var(--accent2);cursor:pointer';
       span.textContent = (val || '?') + ' ' + unit;
       span.onclick = () => {
-        const inp = document.createElement('input'); inp.type = 'text'; inp.value = val || '';
+        const inp = document.createElement('input'); inp.type = 'text'; inp.inputMode = 'decimal'; inp.value = val || '';
         inp.style.cssText = 'width:50px;text-align:center;font-size:11px;padding:2px 4px';
         inp.className = 'meal-kcal-inp';
+        inp.oninput = () => { inp.value = normalizeNum(inp.value); };
         inp.onblur = () => { act[key] = inp.value.trim(); save(); renderActivities(); render(); };
         inp.onkeydown = (e) => { if (e.key === 'Enter') inp.blur(); };
         span.replaceWith(inp); inp.focus(); inp.select();
