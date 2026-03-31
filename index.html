@@ -690,9 +690,9 @@
     <div id="actList"></div>
     <div class="meal-add">
       <select id="actType" onchange="toggleActKg()"></select>
-      <input type="text" class="meal-kcal-inp" id="actKm" placeholder="km" style="width:60px" onkeydown="if(event.key==='Enter')document.getElementById('actMin').focus()">
-      <input type="text" class="meal-kcal-inp" id="actMin" placeholder="min" style="width:60px" onkeydown="if(event.key==='Enter'){if(document.getElementById('actKg').style.display!=='none')document.getElementById('actKg').focus();else addActivity();}">
-      <input type="text" class="meal-kcal-inp" id="actKg" placeholder="kg" style="width:60px;display:none" onkeydown="if(event.key==='Enter')addActivity()">
+      <input type="text" class="meal-kcal-inp" id="actKm" placeholder="km" style="width:60px" oninput="this.value=normalizeNum(this.value)" onkeydown="if(event.key==='Enter')document.getElementById('actMin').focus()">
+      <input type="text" class="meal-kcal-inp" id="actMin" placeholder="min" style="width:60px" oninput="this.value=normalizeNum(this.value)" onkeydown="if(event.key==='Enter'){if(document.getElementById('actKg').style.display!=='none')document.getElementById('actKg').focus();else addActivity();}">
+      <input type="text" class="meal-kcal-inp" id="actKg" placeholder="kg" style="width:60px;display:none" oninput="this.value=normalizeNum(this.value)" onkeydown="if(event.key==='Enter')addActivity()">
       <button class="meal-add-btn" onclick="addActivity()">Add</button>
     </div>
     <div class="meal-totals" id="actTotals"></div>
