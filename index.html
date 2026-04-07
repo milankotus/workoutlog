@@ -744,6 +744,10 @@
       <input type="text" inputmode="decimal" class="meal-kcal-inp" id="actElev" placeholder="m↑" style="width:60px" oninput="this.value=normalizeNum(this.value)" onkeydown="if(event.key==='Enter')addActivity()">
       <button class="meal-add-btn" onclick="addActivity()">Add</button>
     </div>
+    <div style="margin-top:4px;text-align:right">
+      <a href="#" style="font-size:11px;color:var(--text3);text-decoration:none" onclick="event.preventDefault();toggleManageActivities()">Manage activity types</a>
+    </div>
+    <div id="manageActList" style="display:none;margin-top:6px"></div>
     <div class="meal-totals" id="actTotals"></div>
     <button class="manage-close" onclick="closeActivities()">Close</button>
   </div>
@@ -896,6 +900,8 @@ function migrate() {
   if (!state.goals) state.goals = { calories: 0, protein: 0 };
   // Ensure hiddenMeals array exists (meals hidden from autocomplete suggestions)
   if (!state.hiddenMeals) state.hiddenMeals = [];
+  // Ensure customActivities array exists (user-defined activity types)
+  if (!state.customActivities) state.customActivities = [];
 }
 
 // ============================================================================
@@ -1214,6 +1220,16 @@ const ACTIVITY_TYPES = [
   { id: 'rucking', name: 'Rucking', icon: '\u{1F392}', fields: ['km', 'min', 'kg'] },
   { id: 'bicycling', name: 'Bicycling', icon: '\u{1F6B4}', fields: ['km', 'min'] }
 ];
+
+/** Get all activity types: built-in + user-defined custom activities */
+function getAllActivityTypes() {
+  const custom = (state.customActivities || []).map(c => ({
+    id: c.id, name: c.name, icon: c.icon || '\u{1F3AF}',
+    fields: c.hasKg ? ['km', 'min', 'kg'] : ['km', 'min'],
+    custom: true
+  }));
+  return ACTIVITY_TYPES.concat(custom);
+}
 
 /** Sum of all meals for a day (kCal) */
 function calcDayEaten(dateKey) {
@@ -2129,7 +2145,7 @@ function openActivities(dateKey) {
   actModalDate = dateKey;
   const sel = document.getElementById('actType');
   sel.innerHTML = '';
-  ACTIVITY_TYPES.forEach(t => {
+  getAllActivityTypes().forEach(t => {
     const o = document.createElement('option');
     o.value = t.id; o.textContent = t.icon + ' ' + t.name;
     sel.appendChild(o);
@@ -2144,9 +2160,12 @@ function closeActivities() {
   actModalDate = null;
 }
 
-/** Show/hide the weight (kg) field — only visible for rucking activities */
+/** Show/hide the weight (kg) field — visible for activity types that have 'kg' in their fields */
 function toggleActKg() {
-  document.getElementById('actKg').style.display = document.getElementById('actType').value === 'rucking' ? '' : 'none';
+  const typeId = document.getElementById('actType').value;
+  const type = getAllActivityTypes().find(t => t.id === typeId);
+  const hasKg = type && type.fields && type.fields.includes('kg');
+  document.getElementById('actKg').style.display = hasKg ? '' : 'none';
 }
 
 /** Render activity list with inline-editable fields (km, min, kg) and delete buttons */
@@ -2164,7 +2183,8 @@ function renderActivities() {
   list.innerHTML = '';
 
   day.activities.forEach((act, i) => {
-    const type = ACTIVITY_TYPES.find(t => t.id === act.type) || ACTIVITY_TYPES[0];
+    const allTypes = getAllActivityTypes();
+    const type = allTypes.find(t => t.id === act.type) || { id: act.type, name: act.type, icon: '\u{1F3AF}', fields: ['km', 'min'] };
     const item = document.createElement('div'); item.className = 'meal-item';
     item.style.cssText = 'flex-wrap:wrap;gap:4px';
 
@@ -2191,7 +2211,7 @@ function renderActivities() {
 
     item.appendChild(makeField(act.km, 'km', 'km'));
     item.appendChild(makeField(act.min, 'min', 'min'));
-    if (act.type === 'rucking') item.appendChild(makeField(act.kg, 'kg', 'kg'));
+    if (type.fields && type.fields.includes('kg')) item.appendChild(makeField(act.kg, 'kg', 'kg'));
     if (act.elev) item.appendChild(makeField(act.elev, 'm↑', 'elev'));
 
     const del = document.createElement('button'); del.className = 'meal-del'; del.textContent = '\u00D7';
@@ -2214,7 +2234,8 @@ function addActivity() {
   const day = state.days[actModalDate];
   if (!day.activities) day.activities = [];
   const act = { type, km, min };
-  if (type === 'rucking') act.kg = kg;
+  const typeDef = getAllActivityTypes().find(t => t.id === type);
+  if (typeDef && typeDef.fields && typeDef.fields.includes('kg')) act.kg = kg;
   if (elev) act.elev = elev;
   day.activities.push(act);
   save();
@@ -2223,6 +2244,119 @@ function addActivity() {
   document.getElementById('actKg').value = '';
   document.getElementById('actElev').value = '';
   renderActivities(); render();
+}
+
+// ============================================================================
+// MANAGE CUSTOM ACTIVITY TYPES
+// ============================================================================
+
+/** Icons available for custom activity types */
+const ACTIVITY_ICONS = [
+  '\u{1F3AF}', '\u{1F3CA}', '\u{1F9D7}', '\u{1F6F6}', '\u{26F7}\u{FE0F}',
+  '\u{1F3CB}\u{FE0F}', '\u{1F938}', '\u{1F93C}', '\u{1F93A}', '\u{1F3BE}',
+  '\u{26BD}', '\u{1F3D3}', '\u{1F6F9}', '\u{1F3C4}', '\u{26F3}',
+  '\u{1F9D8}', '\u{1FA82}', '\u{1F6A3}', '\u{1F3C7}', '\u{1F3BF}'
+];
+
+/** Toggle the manage custom activities panel */
+function toggleManageActivities() {
+  const container = document.getElementById('manageActList');
+  if (container.style.display !== 'none') { container.style.display = 'none'; return; }
+  container.style.display = 'block';
+  renderManageActivities();
+}
+
+/** Render the manage custom activities panel — list existing + add form */
+function renderManageActivities() {
+  const container = document.getElementById('manageActList');
+  container.innerHTML = '';
+
+  // Existing custom activities
+  (state.customActivities || []).forEach((ca, i) => {
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;gap:6px;padding:3px 8px;background:var(--bg3);border-radius:4px;margin-bottom:2px;font-size:11px';
+    const label = document.createElement('span');
+    label.style.cssText = 'flex:1;color:var(--text)';
+    label.textContent = (ca.icon || '\u{1F3AF}') + ' ' + ca.name + (ca.hasKg ? ' (kg)' : '');
+    const del = document.createElement('button');
+    del.style.cssText = 'background:none;border:none;color:var(--text3);cursor:pointer;font-size:13px;padding:0 4px';
+    del.textContent = '\u00D7';
+    del.title = 'Remove activity type';
+    del.onclick = () => {
+      state.customActivities.splice(i, 1);
+      save(); renderManageActivities();
+      // Refresh the type dropdown
+      const sel = document.getElementById('actType');
+      const cur = sel.value;
+      sel.innerHTML = '';
+      getAllActivityTypes().forEach(t => {
+        const o = document.createElement('option');
+        o.value = t.id; o.textContent = t.icon + ' ' + t.name;
+        sel.appendChild(o);
+      });
+      if (sel.querySelector('option[value="' + cur + '"]')) sel.value = cur;
+      toggleActKg();
+    };
+    row.appendChild(label); row.appendChild(del);
+    container.appendChild(row);
+  });
+
+  // Add new custom activity form
+  const form = document.createElement('div');
+  form.style.cssText = 'display:flex;align-items:center;gap:4px;margin-top:6px;flex-wrap:wrap';
+
+  // Icon picker
+  const iconSel = document.createElement('select');
+  iconSel.style.cssText = 'font-size:14px;padding:2px 4px;background:var(--bg3);color:var(--text);border:1px solid var(--border);border-radius:4px;cursor:pointer';
+  ACTIVITY_ICONS.forEach(ic => {
+    const o = document.createElement('option'); o.value = ic; o.textContent = ic;
+    iconSel.appendChild(o);
+  });
+
+  // Name input
+  const nameInp = document.createElement('input'); nameInp.type = 'text'; nameInp.placeholder = 'Activity name';
+  nameInp.style.cssText = 'flex:1;min-width:80px;font-size:11px;padding:4px 6px;background:var(--bg3);color:var(--text);border:1px solid var(--border);border-radius:4px;font-family:inherit';
+
+  // Has kg checkbox
+  const kgLabel = document.createElement('label');
+  kgLabel.style.cssText = 'font-size:10px;color:var(--text2);display:flex;align-items:center;gap:2px;cursor:pointer';
+  const kgCheck = document.createElement('input'); kgCheck.type = 'checkbox';
+  kgLabel.appendChild(kgCheck);
+  kgLabel.appendChild(document.createTextNode('kg'));
+
+  // Add button
+  const addBtn = document.createElement('button');
+  addBtn.textContent = 'Add';
+  addBtn.style.cssText = 'font-size:11px;padding:4px 10px;background:var(--accent);color:white;border:none;border-radius:4px;cursor:pointer;font-family:inherit;font-weight:600';
+  addBtn.onclick = () => {
+    const name = nameInp.value.trim();
+    if (!name) return;
+    if (!state.customActivities) state.customActivities = [];
+    // Generate unique id from name
+    const id = 'custom_' + name.toLowerCase().replace(/[^a-z0-9]/g, '_');
+    if (getAllActivityTypes().some(t => t.id === id || t.name.toLowerCase() === name.toLowerCase())) {
+      alert('Activity "' + name + '" already exists.');
+      return;
+    }
+    state.customActivities.push({ id, name, icon: iconSel.value, hasKg: kgCheck.checked });
+    save();
+    renderManageActivities();
+    // Refresh the type dropdown
+    const sel = document.getElementById('actType');
+    sel.innerHTML = '';
+    getAllActivityTypes().forEach(t => {
+      const o = document.createElement('option');
+      o.value = t.id; o.textContent = t.icon + ' ' + t.name;
+      sel.appendChild(o);
+    });
+    sel.value = id;
+    toggleActKg();
+  };
+
+  nameInp.onkeydown = (e) => { if (e.key === 'Enter') addBtn.click(); };
+
+  form.appendChild(iconSel); form.appendChild(nameInp); form.appendChild(kgLabel); form.appendChild(addBtn);
+  container.appendChild(form);
 }
 
 // ============================================================================
@@ -2258,9 +2392,9 @@ function exportCSV() {
     // Activities
     if (day.activities && day.activities.length) {
       day.activities.forEach(act => {
-        const type = ACTIVITY_TYPES.find(t => t.id === act.type);
+        const type = getAllActivityTypes().find(t => t.id === act.type);
         let desc = (act.km || '') + ' km / ' + (act.min || '') + ' min';
-        if (act.type === 'rucking' && act.kg) desc += ' / ' + act.kg + ' kg';
+        if (act.kg) desc += ' / ' + act.kg + ' kg';
         if (act.elev) desc += ' / ' + act.elev + ' m↑';
         csv += [k, DAY_NAMES[d.getDay()], (type ? type.name : act.type), desc].join(';') + '\n';
       });
