@@ -32,9 +32,18 @@
         { name: "Horiz. Pullups",         // Display name
           rings: true,                    // Whether performed on gymnastic rings (⊙ badge)
           sets: 3,                        // Number of sets to show (1-6, configurable in Manage panel)
-          masteryReps: 0                  // Reps-per-set goal to consider exercise "mastered" (0 = no goal)
+          masteryReps: 0,                 // Reps-per-set goal to consider exercise "mastered" (0 = no goal)
+          archived: false                 // Hidden from dropdowns but preserved in history
         }, ...
       ],
+      goals: { calories: 2200, protein: 150 },  // Daily calorie/protein targets (0 = no goal)
+      hiddenMeals: ["old meal"],          // Meal names hidden from autocomplete suggestions
+      customActivities: [                 // User-defined activity types (beyond built-in 4)
+        { id: "custom_swimming", name: "Swimming", icon: "🏊", fields: ["km", "min"] }
+      ],
+      plan: {                             // Custom weekly plan (overrides PLAN constant)
+        1: ["Pullups", "Dips"],           // Day-of-week (0=Sun..6=Sat) → exercise names
+      },
       days: {                             // Training log, keyed by ISO date string
         "2025-03-23": {
           exercises: [                    // Exercises logged that day (up to 8)
@@ -48,7 +57,7 @@
           meals: [                        // Meals eaten that day (calories + protein)
             { name: "Chicken rice", kcal: 650, protein: 45 }
           ],
-          activities: [                   // Cardio/activities that day
+          activities: [                   // Cardio/activities that day (built-in + custom types)
             { type: "running", km: "6.16", min: "45", elev: "120" },
             { type: "rucking", km: "3", min: "30", kg: "20" },
             { type: "walking", km: "5", min: "60" },
@@ -92,30 +101,39 @@
     Week navigation via ← Previous / Next → / Today buttons.
 
   MODALS:
-    Meals modal     — Click calories. Add/edit/remove meals (name + kCal).
-                       Autocomplete suggests top 15 most frequent meals (datalist).
+    Meals modal     — Click calories. Add/edit/remove meals (name + kCal + protein).
+                       Custom dropdown suggests top 15 most frequent meals.
                        Selecting a suggestion auto-fills kCal + protein.
                        Uses the most recent historical entry for that meal name.
                        "Manage saved meals" link lets user hide unwanted suggestions.
-    Activities modal — Click activities count. Add/remove activities with params.
-    Manage modal    — Footer button. Add/remove/rename exercises, configure sets, toggle rings.
+    Activities modal — Click activities count. Add/remove activities with type-specific fields.
+                       Built-in types: Running, Walking, Rucking, Bicycling.
+                       "Manage activity types" lets user define custom types with chosen fields.
+    Manage modal    — Footer button. Add/remove/rename/archive exercises, configure sets, toggle rings.
                        Click exercise name to rename inline — propagates to all history,
                        current week, and weekly plan template.
+    Charts modal    — Footer button. Multi-series line chart (weight, waist, calories, protein).
+                       Time range selector: 30d / 90d / 6mo / 1yr / all.
 
   KEY FUNCTIONS:
-    render()            — Rebuilds the entire week grid.
-    cell(d,dd,ei)       — Creates one exercise cell for a given day/exercise index.
-    save()              — Writes state to localStorage.
-    ensureDay(d)        — Gets or creates day data, seeding from PLAN/state.plan if empty.
-    propagateExerciseChange() — Pushes exercise change to future weeks + updates plan.
-    renameExercise()        — Renames exercise everywhere (master list, all days, plan).
-    fmtSets()               — Formats sets array with total reps sum when all filled.
-    calcDayEaten()      — Sum of meal calories for a day.
-    calcDayProtein()    — Sum of meal protein for a day.
-    buildMealSuggestions() — Populates datalist with top 15 most frequent meals.
-    autofillMealKcal()  — Auto-fills kCal + protein from most recent historical match.
-    toggleSavedMeals()  — Shows/hides saved meals list with option to hide entries.
-    migrate()           — Data migration (exercise renames, old field conversions).
+    render()               — Rebuilds the entire week grid.
+    cell(d,dd,ei)          — Creates one exercise cell for a given day/exercise index.
+    save()                 — Writes state to localStorage + triggers cloud sync.
+    ensureDay(d)           — Gets or creates day data, seeding from PLAN/state.plan if empty.
+    propagateDayPlan()     — Pushes exercise change to future weeks + updates plan.
+    renameExercise()       — Renames exercise everywhere (master list, all days, plan).
+    fmtSets()              — Formats sets array with total reps sum when all filled.
+    getMasteryStreak()     — Counts consecutive goal-meeting sessions for mastery badge.
+    getAllActivityTypes()  — Merges built-in + custom activity types.
+    toggleActFields()      — Shows/hides activity input fields per selected type.
+    calcDayEaten()         — Sum of meal calories for a day.
+    calcDayProtein()       — Sum of meal protein for a day.
+    filterMealSuggestions()— Shows filtered meal dropdown below the name input.
+    autofillMealKcal()     — Auto-fills kCal + protein from most recent historical match.
+    toggleSavedMeals()     — Shows/hides saved meals list with option to hide entries.
+    migrate()              — Data migration (exercise renames, old field conversions).
+    cloudSave() / cloudLoad() — Debounced cloud sync via Cloudflare Worker.
+    renderCharts()         — Builds multi-series chart in Charts modal.
 
   EXPORT/IMPORT:
     - Export backup: Downloads complete state as JSON
@@ -428,13 +446,7 @@
   }
   .archived-list .manage-item .restore-btn:hover { color: var(--green); }
 
-  /* === CARDIO CELL — running + rucking inputs per day === */
-  .cardio-cell {
-    width: 110px; min-width: 110px; background: var(--bg2); border: 1px solid var(--border);
-    border-radius: var(--radius); padding: 6px 8px; display: flex;
-    flex-direction: column; justify-content: center; gap: 4px; flex-shrink: 0;
-  }
-  .cardio-cell:hover { border-color: var(--bg4); }
+  /* === CARDIO SUB-ELEMENTS — weight/waist input rows inside the tracking cell === */
   .cardio-row {
     display: flex; align-items: center; gap: 4px;
   }
@@ -1119,13 +1131,6 @@ function propagateDayPlan(d) {
   }
 }
 
-/**
- * Look up the best recorded sets for a given exercise across an entire week,
- * offset by N weeks from the week containing date d.
- * offset=-1 means "last week", offset=-2 means "two weeks ago".
- * Scans Mon–Sun of the target week, returns the sets array with the highest
- * total reps, or null if the exercise wasn't done that week.
- */
 /** Find the most recent N recorded sessions of exercise `name` before `dateKey`.
  *  Returns array of sets arrays, most recent first (index 0 = previous, 1 = one before that). */
 function getRecentSets(dateKey, name, n) {
@@ -2165,7 +2170,7 @@ function toggleActFields() {
   document.getElementById('actElev').style.display = fields.includes('elev') ? '' : 'none';
 }
 
-/** Render activity list with inline-editable fields (km, min, kg) and delete buttons */
+/** Render activity list with inline-editable fields and delete buttons */
 function renderActivities() {
   if (!actModalDate) return;
   if (!state.days[actModalDate]) state.days[actModalDate] = { exercises: [] };

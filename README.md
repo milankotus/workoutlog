@@ -6,15 +6,19 @@ Single-file calisthenics & nutrition tracker based on [Hybrid Calisthenics](http
 
 ## Features
 
-- Weekly exercise tracking with sets/reps, history comparison (-2w, -1w)
+- Weekly exercise tracking with sets/reps, history comparison (-2, -1 sessions)
 - Exercise changes propagate to all future weeks (same day, same slot)
+- Skip exercises (today, future, or retroactively in the past)
+- Exercise mastery system (goal reps, streak tracking — skips don't break streaks)
+- Exercise archiving (hide from dropdowns, preserve history)
 - Body measurements (weight, waist)
-- Meal logging with calorie + protein tracking and autocomplete
+- Meal logging with calorie + protein tracking, autocomplete, and daily goals
 - Manage saved meals (hide unwanted items from suggestions)
-- Activities (running, walking, rucking, bicycling)
-- Exercise mastery system (goal reps, streak tracking)
-- Combined chart (weight, waist, calories) with time range selector
+- Activities: built-in types (running, walking, rucking, bicycling) + custom user-defined types
+- Custom activities support configurable fields (km, min, kg, elevation)
+- Combined chart (weight, waist, calories, protein) with time range selector
 - Export/import JSON backups, CSV export
+- Cloud sync across devices (Cloudflare Worker + JSONBin.io)
 - Mobile responsive layout
 
 ## Cloud Sync
