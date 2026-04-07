@@ -39,7 +39,8 @@
         "2025-03-23": {
           exercises: [                    // Exercises logged that day (up to 8)
             { name: "Horiz. Pullups",     // Must match a name from the exercises[] array
-              sets: ["26", "23", "20"]    // Array of string values, one per set
+              sets: ["26", "23", "20"],   // Array of string values, one per set
+              skipped: true               // Optional: marks exercise as skipped (not done that day)
             }, ...
           ],
           weight: "85",                   // Body weight in kg
@@ -48,10 +49,10 @@
             { name: "Chicken rice", kcal: 650, protein: 45 }
           ],
           activities: [                   // Cardio/activities that day
-            { type: "running", km: "6.16", min: "45" },
+            { type: "running", km: "6.16", min: "45", elev: "120" },
             { type: "rucking", km: "3", min: "30", kg: "20" },
             { type: "walking", km: "5", min: "60" },
-            { type: "bicycling", km: "15", min: "40" }
+            { type: "bicycling", km: "15", min: "40", elev: "250" }
           ]
         }, ...
       }
@@ -375,6 +376,20 @@
     0%, 100% { box-shadow: 0 0 4px rgba(0,255,136,.15); }
     50% { box-shadow: 0 0 12px rgba(0,255,136,.35); }
   }
+  /* === SKIP EXERCISE — button + dimmed cell state === */
+  .skip-btn {
+    background: none; border: 1px solid var(--border); color: var(--text3);
+    font-size: 9px; padding: 1px 6px; border-radius: 4px; cursor: pointer;
+    font-family: inherit; margin-top: 2px; transition: all .15s; align-self: flex-start;
+  }
+  .skip-btn:hover { color: var(--orange); border-color: var(--orange); }
+  .skip-btn.active { color: var(--orange); border-color: var(--orange); background: rgba(245,166,35,.08); }
+  .exercise-cell.skipped { opacity: 0.5; }
+  .skipped-label {
+    font-size: 10px; font-weight: 700; color: var(--text3); letter-spacing: 1px;
+    text-align: center; padding: 8px 0; flex: 1; display: flex; align-items: center; justify-content: center;
+  }
+
   .manage-add { display: flex; gap: 6px; margin-top: 10px; align-items: center; }
   .manage-add input[type="text"] {
     flex: 1; font-family: inherit; font-size: 13px; padding: 6px 10px;
@@ -724,8 +739,9 @@
     <div class="meal-add">
       <select id="actType" onchange="toggleActKg()"></select>
       <input type="text" inputmode="decimal" class="meal-kcal-inp" id="actKm" placeholder="km" style="width:60px" oninput="this.value=normalizeNum(this.value)" onkeydown="if(event.key==='Enter')document.getElementById('actMin').focus()">
-      <input type="text" inputmode="decimal" class="meal-kcal-inp" id="actMin" placeholder="min" style="width:60px" oninput="this.value=normalizeNum(this.value)" onkeydown="if(event.key==='Enter'){if(document.getElementById('actKg').style.display!=='none')document.getElementById('actKg').focus();else addActivity();}">
-      <input type="text" inputmode="decimal" class="meal-kcal-inp" id="actKg" placeholder="kg" style="width:60px;display:none" oninput="this.value=normalizeNum(this.value)" onkeydown="if(event.key==='Enter')addActivity()">
+      <input type="text" inputmode="decimal" class="meal-kcal-inp" id="actMin" placeholder="min" style="width:60px" oninput="this.value=normalizeNum(this.value)" onkeydown="if(event.key==='Enter'){if(document.getElementById('actKg').style.display!=='none')document.getElementById('actKg').focus();else document.getElementById('actElev').focus();}">
+      <input type="text" inputmode="decimal" class="meal-kcal-inp" id="actKg" placeholder="kg" style="width:60px;display:none" oninput="this.value=normalizeNum(this.value)" onkeydown="if(event.key==='Enter')document.getElementById('actElev').focus()">
+      <input type="text" inputmode="decimal" class="meal-kcal-inp" id="actElev" placeholder="m↑" style="width:60px" oninput="this.value=normalizeNum(this.value)" onkeydown="if(event.key==='Enter')addActivity()">
       <button class="meal-add-btn" onclick="addActivity()">Add</button>
     </div>
     <div class="meal-totals" id="actTotals"></div>
@@ -1114,7 +1130,7 @@ function getRecentSets(dateKey, name, n) {
     if (!day || !day.exercises) continue;
     for (var ei = 0; ei < day.exercises.length; ei++) {
       var ex = day.exercises[ei];
-      if (ex.name !== name || !ex.sets || !ex.sets.some(function(s) { return s; })) continue;
+      if (ex.name !== name || ex.skipped || !ex.sets || !ex.sets.some(function(s) { return s; })) continue;
       results.push(ex.sets);
       break;
     }
@@ -1146,12 +1162,21 @@ function getMasteryStreak(exName, goal, numSets, upToDate) {
   const limit = dk(upToDate);
   const dates = Object.keys(state.days).filter(k => k <= limit).sort().reverse();
   let streak = 0;
+  let consecutiveSkips = 0;  // Track consecutive skips: 1 tolerated, 2+ breaks streak
   for (const k of dates) {
     const dd = state.days[k];
     if (!dd || !dd.exercises) continue;
     const ex = dd.exercises.find(e => e.name === exName);
-    if (!ex || !ex.sets || !ex.sets.some(s => s)) continue;
-    // This is a session — check if all sets meet goal
+    if (!ex) continue;
+    // Skipped exercise — tolerate one, break on two or more consecutive
+    if (ex.skipped) {
+      consecutiveSkips++;
+      if (consecutiveSkips > 1) break;
+      continue;
+    }
+    if (!ex.sets || !ex.sets.some(s => s)) continue;
+    // Real session — reset skip counter and check if all sets meet goal
+    consecutiveSkips = 0;
     const allMet = ex.sets.slice(0, numSets).every(s => s && parseInt(s) >= goal);
     if (allMet) streak++;
     else break;
@@ -1392,7 +1417,7 @@ function cell(d, dd, ei) {
   const key = dk(d);
   const isPast = d < today;
   const c = document.createElement('div');
-  c.className = 'exercise-cell';
+  c.className = 'exercise-cell' + (ex.skipped ? ' skipped' : '');
 
   // === EXERCISE DROPDOWN ===
   const sel = document.createElement('select');
@@ -1410,10 +1435,24 @@ function cell(d, dd, ei) {
   sel.onchange = () => {
     dd.exercises[ei].name = sel.value;
     dd.exercises[ei].sets = normalizeSets(dd.exercises[ei].sets, sel.value);
+    delete dd.exercises[ei].skipped;
     propagateDayPlan(d);
     save(); render();
   };
   c.appendChild(sel);
+
+  // === SKIP BUTTON (only for non-past days with an exercise selected) ===
+  if (ex.name && !isPast) {
+    const skipBtn = document.createElement('button');
+    skipBtn.className = 'skip-btn' + (ex.skipped ? ' active' : '');
+    skipBtn.textContent = ex.skipped ? '↩ Undo skip' : 'Skip';
+    skipBtn.onclick = () => {
+      dd.exercises[ei].skipped = !dd.exercises[ei].skipped;
+      if (!dd.exercises[ei].skipped) delete dd.exercises[ei].skipped;
+      save(); render();
+    };
+    c.appendChild(skipBtn);
+  }
 
   // === HISTORY LINES (-2, -1, now) ===
   // Shows the last 2 recorded sessions of this exercise (any day), plus current.
@@ -1433,12 +1472,16 @@ function cell(d, dd, ei) {
     c.appendChild(l1);
 
     const nowLine = document.createElement('div'); nowLine.className = 'wk-line';
-    const tw = ex.sets && ex.sets.some(s => s) ? ex.sets : null;
-    if (tw && fmtSets(tw)) {
-      nowLine.innerHTML = '<span class="wk-label">now:</span><span class="wk-val cur">' + fmtSets(tw) + '</span>';
+    if (ex.skipped) {
+      nowLine.innerHTML = '<span class="wk-label">now:</span><span class="wk-val" style="color:var(--text3);font-style:italic">skipped</span>';
     } else {
-      nowLine.style.display = 'none';
-      nowLine.innerHTML = '<span class="wk-label">now:</span><span class="wk-val cur"></span>';
+      const tw = ex.sets && ex.sets.some(s => s) ? ex.sets : null;
+      if (tw && fmtSets(tw)) {
+        nowLine.innerHTML = '<span class="wk-label">now:</span><span class="wk-val cur">' + fmtSets(tw) + '</span>';
+      } else {
+        nowLine.style.display = 'none';
+        nowLine.innerHTML = '<span class="wk-label">now:</span><span class="wk-val cur"></span>';
+      }
     }
     c.appendChild(nowLine);
   } else {
@@ -1450,49 +1493,57 @@ function cell(d, dd, ei) {
     });
   }
 
-  // === SET INPUT FIELDS ===
-  // Number of inputs determined by exercise's 'sets' config (1-6)
-  const numSets = ex.name ? getSetCount(ex.name) : 3;
-  ex.sets = normalizeSets(ex.sets, ex.name);
+  // === SET INPUT FIELDS / SKIPPED STATE ===
+  if (ex.skipped) {
+    // Show SKIPPED label instead of set inputs when exercise is skipped
+    const skippedLabel = document.createElement('div');
+    skippedLabel.className = 'skipped-label';
+    skippedLabel.textContent = 'SKIPPED';
+    c.appendChild(skippedLabel);
+  } else {
+    // Number of inputs determined by exercise's 'sets' config (1-6)
+    const numSets = ex.name ? getSetCount(ex.name) : 3;
+    ex.sets = normalizeSets(ex.sets, ex.name);
 
-  const sr = document.createElement('div'); sr.className = 'sets-row';
-  for (let si = 0; si < numSets; si++) {
-    const inp = document.createElement('input');
-    inp.type = 'text';
-    inp.dataset.focusId = 'set-' + key + '-' + ei + '-' + si;
-    inp.placeholder = 'S' + (si + 1);
-    inp.value = ex.sets[si] || '';
-    if (isPast) { inp.readOnly = true; }
-    // Save on every keystroke + full re-render (updates now line, mastery, etc.)
-    const onEdit = () => {
-      inp.value = normalizeNum(inp.value);
-      state.days[key].exercises[ei].sets[si] = inp.value;
-      save(); render();
-    };
-    inp.oninput = onEdit;
-    inp.onchange = onEdit;
-    sr.appendChild(inp);
-  }
-  c.appendChild(sr);
+    const sr = document.createElement('div'); sr.className = 'sets-row';
+    for (let si = 0; si < numSets; si++) {
+      const inp = document.createElement('input');
+      inp.type = 'text';
+      inp.dataset.focusId = 'set-' + key + '-' + ei + '-' + si;
+      inp.placeholder = 'S' + (si + 1);
+      inp.value = ex.sets[si] || '';
+      if (isPast) { inp.readOnly = true; }
+      // Save on every keystroke + full re-render (updates now line, mastery, etc.)
+      const onEdit = () => {
+        inp.value = normalizeNum(inp.value);
+        state.days[key].exercises[ei].sets[si] = inp.value;
+        save(); render();
+      };
+      inp.oninput = onEdit;
+      inp.onchange = onEdit;
+      sr.appendChild(inp);
+    }
+    c.appendChild(sr);
 
-  // === MASTERY INDICATOR ===
-  if (ex.name) {
-    const exDef = state.exercises.find(e => e.name === ex.name);
-    const goal = exDef && exDef.masteryReps;
-    if (goal > 0) {
-      const streak = Math.min(getMasteryStreak(ex.name, goal, numSets, d), 3);
-      const badge = document.createElement('div');
-      badge.className = 'mastery-badge mastery-' + streak;
-      if (streak >= 3) {
-        badge.textContent = '\u2605 MASTERED \u2605';
-      } else if (streak === 2) {
-        badge.textContent = '\u2191 ' + goal + ' reps — ' + streak + '/3';
-      } else if (streak === 1) {
-        badge.textContent = goal + ' reps — ' + streak + '/3';
-      } else {
-        badge.textContent = 'goal: ' + goal + ' reps';
+    // === MASTERY INDICATOR ===
+    if (ex.name) {
+      const exDef = state.exercises.find(e => e.name === ex.name);
+      const goal = exDef && exDef.masteryReps;
+      if (goal > 0) {
+        const streak = Math.min(getMasteryStreak(ex.name, goal, numSets, d), 3);
+        const badge = document.createElement('div');
+        badge.className = 'mastery-badge mastery-' + streak;
+        if (streak >= 3) {
+          badge.textContent = '\u2605 MASTERED \u2605';
+        } else if (streak === 2) {
+          badge.textContent = '\u2191 ' + goal + ' reps — ' + streak + '/3';
+        } else if (streak === 1) {
+          badge.textContent = goal + ' reps — ' + streak + '/3';
+        } else {
+          badge.textContent = 'goal: ' + goal + ' reps';
+        }
+        c.appendChild(badge);
       }
-      c.appendChild(badge);
     }
   }
 
@@ -2141,6 +2192,7 @@ function renderActivities() {
     item.appendChild(makeField(act.km, 'km', 'km'));
     item.appendChild(makeField(act.min, 'min', 'min'));
     if (act.type === 'rucking') item.appendChild(makeField(act.kg, 'kg', 'kg'));
+    if (act.elev) item.appendChild(makeField(act.elev, 'm↑', 'elev'));
 
     const del = document.createElement('button'); del.className = 'meal-del'; del.textContent = '\u00D7';
     del.onclick = () => { day.activities.splice(i, 1); save(); renderActivities(); render(); };
@@ -2157,16 +2209,19 @@ function addActivity() {
   const km = normalizeNum(document.getElementById('actKm').value.trim());
   const min = normalizeNum(document.getElementById('actMin').value.trim());
   const kg = normalizeNum(document.getElementById('actKg').value.trim());
+  const elev = normalizeNum(document.getElementById('actElev').value.trim());
   if (!km && !min) return;
   const day = state.days[actModalDate];
   if (!day.activities) day.activities = [];
   const act = { type, km, min };
   if (type === 'rucking') act.kg = kg;
+  if (elev) act.elev = elev;
   day.activities.push(act);
   save();
   document.getElementById('actKm').value = '';
   document.getElementById('actMin').value = '';
   document.getElementById('actKg').value = '';
+  document.getElementById('actElev').value = '';
   renderActivities(); render();
 }
 
@@ -2195,7 +2250,7 @@ function exportCSV() {
     const p = k.split('-');
     const d = new Date(+p[0], +p[1]-1, +p[2]);
     (day.exercises || []).forEach(ex => {
-      if (!ex.name || !ex.sets || !ex.sets.some(s => s)) return;
+      if (!ex.name || ex.skipped || !ex.sets || !ex.sets.some(s => s)) return;
       let line = [k, DAY_NAMES[d.getDay()], ex.name];
       for (let i = 0; i < maxS; i++) line.push(ex.sets[i] || '');
       csv += line.join(';') + '\n';
@@ -2206,6 +2261,7 @@ function exportCSV() {
         const type = ACTIVITY_TYPES.find(t => t.id === act.type);
         let desc = (act.km || '') + ' km / ' + (act.min || '') + ' min';
         if (act.type === 'rucking' && act.kg) desc += ' / ' + act.kg + ' kg';
+        if (act.elev) desc += ' / ' + act.elev + ' m↑';
         csv += [k, DAY_NAMES[d.getDay()], (type ? type.name : act.type), desc].join(';') + '\n';
       });
     }
