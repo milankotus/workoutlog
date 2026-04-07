@@ -1161,28 +1161,22 @@ function fmtSets(s) {
  * Count consecutive sessions (most recent first, up to `upToDate`) where
  * every set of the given exercise met the mastery goal.
  * A "session" is any day where the exercise has at least one set filled.
- * Days where the exercise wasn't logged are skipped (not a session).
+ * Days where the exercise wasn't logged or was skipped are ignored (not a session).
  * A session with data that doesn't meet the goal breaks the streak.
  */
 function getMasteryStreak(exName, goal, numSets, upToDate) {
   const limit = dk(upToDate);
   const dates = Object.keys(state.days).filter(k => k <= limit).sort().reverse();
   let streak = 0;
-  let consecutiveSkips = 0;  // Track consecutive skips: 1 tolerated, 2+ breaks streak
   for (const k of dates) {
     const dd = state.days[k];
     if (!dd || !dd.exercises) continue;
     const ex = dd.exercises.find(e => e.name === exName);
     if (!ex) continue;
-    // Skipped exercise — tolerate one, break on two or more consecutive
-    if (ex.skipped) {
-      consecutiveSkips++;
-      if (consecutiveSkips > 1) break;
-      continue;
-    }
+    // Skipped exercises are transparent — they never break the streak
+    if (ex.skipped) continue;
     if (!ex.sets || !ex.sets.some(s => s)) continue;
-    // Real session — reset skip counter and check if all sets meet goal
-    consecutiveSkips = 0;
+    // Real session — check if all sets meet goal
     const allMet = ex.sets.slice(0, numSets).every(s => s && parseInt(s) >= goal);
     if (allMet) streak++;
     else break;
@@ -1457,8 +1451,8 @@ function cell(d, dd, ei) {
   };
   c.appendChild(sel);
 
-  // === SKIP BUTTON (only for non-past days with an exercise selected) ===
-  if (ex.name && !isPast) {
+  // === SKIP BUTTON (any day with an exercise selected) ===
+  if (ex.name) {
     const skipBtn = document.createElement('button');
     skipBtn.className = 'skip-btn' + (ex.skipped ? ' active' : '');
     skipBtn.textContent = ex.skipped ? '↩ Undo skip' : 'Skip';
