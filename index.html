@@ -737,11 +737,11 @@
     <div class="meal-date" id="actDate"></div>
     <div id="actList"></div>
     <div class="meal-add">
-      <select id="actType" onchange="toggleActKg()"></select>
-      <input type="text" inputmode="decimal" class="meal-kcal-inp" id="actKm" placeholder="km" style="width:60px" oninput="this.value=normalizeNum(this.value)" onkeydown="if(event.key==='Enter')document.getElementById('actMin').focus()">
-      <input type="text" inputmode="decimal" class="meal-kcal-inp" id="actMin" placeholder="min" style="width:60px" oninput="this.value=normalizeNum(this.value)" onkeydown="if(event.key==='Enter'){if(document.getElementById('actKg').style.display!=='none')document.getElementById('actKg').focus();else document.getElementById('actElev').focus();}">
-      <input type="text" inputmode="decimal" class="meal-kcal-inp" id="actKg" placeholder="kg" style="width:60px;display:none" oninput="this.value=normalizeNum(this.value)" onkeydown="if(event.key==='Enter')document.getElementById('actElev').focus()">
-      <input type="text" inputmode="decimal" class="meal-kcal-inp" id="actElev" placeholder="m↑" style="width:60px" oninput="this.value=normalizeNum(this.value)" onkeydown="if(event.key==='Enter')addActivity()">
+      <select id="actType" onchange="toggleActFields()"></select>
+      <input type="text" inputmode="decimal" class="meal-kcal-inp" id="actKm" placeholder="km" style="width:60px;display:none" oninput="this.value=normalizeNum(this.value)" onkeydown="if(event.key==='Enter')document.getElementById('actMin').focus()">
+      <input type="text" inputmode="decimal" class="meal-kcal-inp" id="actMin" placeholder="min" style="width:60px;display:none" oninput="this.value=normalizeNum(this.value)" onkeydown="if(event.key==='Enter'){if(document.getElementById('actKg').style.display!=='none')document.getElementById('actKg').focus();else if(document.getElementById('actElev').style.display!=='none')document.getElementById('actElev').focus();else addActivity();}">
+      <input type="text" inputmode="decimal" class="meal-kcal-inp" id="actKg" placeholder="kg" style="width:60px;display:none" oninput="this.value=normalizeNum(this.value)" onkeydown="if(event.key==='Enter'){if(document.getElementById('actElev').style.display!=='none')document.getElementById('actElev').focus();else addActivity();}">
+      <input type="text" inputmode="decimal" class="meal-kcal-inp" id="actElev" placeholder="m↑" style="width:60px;display:none" oninput="this.value=normalizeNum(this.value)" onkeydown="if(event.key==='Enter')addActivity()">
       <button class="meal-add-btn" onclick="addActivity()">Add</button>
     </div>
     <div style="margin-top:4px;text-align:right">
@@ -1209,17 +1209,17 @@ let actModalDate = null;
 
 /** Activity types with icons and required fields */
 const ACTIVITY_TYPES = [
-  { id: 'running', name: 'Running', icon: '\u{1F3C3}', fields: ['km', 'min'] },
-  { id: 'walking', name: 'Walking', icon: '\u{1F6B6}', fields: ['km', 'min'] },
-  { id: 'rucking', name: 'Rucking', icon: '\u{1F392}', fields: ['km', 'min', 'kg'] },
-  { id: 'bicycling', name: 'Bicycling', icon: '\u{1F6B4}', fields: ['km', 'min'] }
+  { id: 'running', name: 'Running', icon: '\u{1F3C3}', fields: ['km', 'min', 'elev'] },
+  { id: 'walking', name: 'Walking', icon: '\u{1F6B6}', fields: ['km', 'min', 'elev'] },
+  { id: 'rucking', name: 'Rucking', icon: '\u{1F392}', fields: ['km', 'min', 'kg', 'elev'] },
+  { id: 'bicycling', name: 'Bicycling', icon: '\u{1F6B4}', fields: ['km', 'min', 'elev'] }
 ];
 
 /** Get all activity types: built-in + user-defined custom activities */
 function getAllActivityTypes() {
   const custom = (state.customActivities || []).map(c => ({
     id: c.id, name: c.name, icon: c.icon || '\u{1F3AF}',
-    fields: c.hasKg ? ['km', 'min', 'kg'] : ['km', 'min'],
+    fields: c.fields || (c.hasKg ? ['km', 'min', 'kg'] : ['km', 'min']),
     custom: true
   }));
   return ACTIVITY_TYPES.concat(custom);
@@ -2144,7 +2144,7 @@ function openActivities(dateKey) {
     o.value = t.id; o.textContent = t.icon + ' ' + t.name;
     sel.appendChild(o);
   });
-  toggleActKg();
+  toggleActFields();
   document.getElementById('actOverlay').classList.add('open');
   renderActivities();
 }
@@ -2154,12 +2154,15 @@ function closeActivities() {
   actModalDate = null;
 }
 
-/** Show/hide the weight (kg) field — visible for activity types that have 'kg' in their fields */
-function toggleActKg() {
+/** Show/hide activity input fields based on the selected type's field definitions */
+function toggleActFields() {
   const typeId = document.getElementById('actType').value;
   const type = getAllActivityTypes().find(t => t.id === typeId);
-  const hasKg = type && type.fields && type.fields.includes('kg');
-  document.getElementById('actKg').style.display = hasKg ? '' : 'none';
+  const fields = (type && type.fields) || ['km', 'min'];
+  document.getElementById('actKm').style.display = fields.includes('km') ? '' : 'none';
+  document.getElementById('actMin').style.display = fields.includes('min') ? '' : 'none';
+  document.getElementById('actKg').style.display = fields.includes('kg') ? '' : 'none';
+  document.getElementById('actElev').style.display = fields.includes('elev') ? '' : 'none';
 }
 
 /** Render activity list with inline-editable fields (km, min, kg) and delete buttons */
@@ -2203,10 +2206,11 @@ function renderActivities() {
       return span;
     };
 
-    item.appendChild(makeField(act.km, 'km', 'km'));
-    item.appendChild(makeField(act.min, 'min', 'min'));
-    if (type.fields && type.fields.includes('kg')) item.appendChild(makeField(act.kg, 'kg', 'kg'));
-    if (act.elev) item.appendChild(makeField(act.elev, 'm↑', 'elev'));
+    const flds = (type.fields) || ['km', 'min'];
+    if (flds.includes('km')) item.appendChild(makeField(act.km, 'km', 'km'));
+    if (flds.includes('min')) item.appendChild(makeField(act.min, 'min', 'min'));
+    if (flds.includes('kg')) item.appendChild(makeField(act.kg, 'kg', 'kg'));
+    if (flds.includes('elev')) item.appendChild(makeField(act.elev, 'm↑', 'elev'));
 
     const del = document.createElement('button'); del.className = 'meal-del'; del.textContent = '\u00D7';
     del.onclick = () => { day.activities.splice(i, 1); save(); renderActivities(); render(); };
@@ -2224,13 +2228,17 @@ function addActivity() {
   const min = normalizeNum(document.getElementById('actMin').value.trim());
   const kg = normalizeNum(document.getElementById('actKg').value.trim());
   const elev = normalizeNum(document.getElementById('actElev').value.trim());
-  if (!km && !min) return;
+  const typeDef = getAllActivityTypes().find(t => t.id === type);
+  const fields = (typeDef && typeDef.fields) || ['km', 'min'];
+  // Require at least one field to have a value
+  if (!km && !min && !kg && !elev) return;
   const day = state.days[actModalDate];
   if (!day.activities) day.activities = [];
-  const act = { type, km, min };
-  const typeDef = getAllActivityTypes().find(t => t.id === type);
-  if (typeDef && typeDef.fields && typeDef.fields.includes('kg')) act.kg = kg;
-  if (elev) act.elev = elev;
+  const act = { type };
+  if (fields.includes('km')) act.km = km;
+  if (fields.includes('min')) act.min = min;
+  if (fields.includes('kg')) act.kg = kg;
+  if (fields.includes('elev')) act.elev = elev;
   day.activities.push(act);
   save();
   document.getElementById('actKm').value = '';
@@ -2260,6 +2268,27 @@ function toggleManageActivities() {
   renderManageActivities();
 }
 
+/** Helper: format a fields array as short label string (e.g. "km, min, m↑") */
+function fmtFields(fields) {
+  const labels = { km: 'km', min: 'min', kg: 'kg', elev: 'm\u2191' };
+  return (fields || []).map(f => labels[f] || f).join(', ');
+}
+
+/** Helper: refresh the activity type dropdown and toggle field visibility */
+function refreshActDropdown(selectValue) {
+  const sel = document.getElementById('actType');
+  const cur = selectValue || sel.value;
+  sel.innerHTML = '';
+  getAllActivityTypes().forEach(t => {
+    const o = document.createElement('option');
+    o.value = t.id; o.textContent = t.icon + ' ' + t.name;
+    sel.appendChild(o);
+  });
+  if (selectValue) sel.value = selectValue;
+  else if (sel.querySelector('option[value="' + cur + '"]')) sel.value = cur;
+  toggleActFields();
+}
+
 /** Render the manage custom activities panel — list existing + add form */
 function renderManageActivities() {
   const container = document.getElementById('manageActList');
@@ -2267,31 +2296,24 @@ function renderManageActivities() {
 
   // Existing custom activities
   (state.customActivities || []).forEach((ca, i) => {
+    const fields = ca.fields || (ca.hasKg ? ['km', 'min', 'kg'] : ['km', 'min']);
     const row = document.createElement('div');
     row.style.cssText = 'display:flex;align-items:center;gap:6px;padding:3px 8px;background:var(--bg3);border-radius:4px;margin-bottom:2px;font-size:11px';
     const label = document.createElement('span');
     label.style.cssText = 'flex:1;color:var(--text)';
-    label.textContent = (ca.icon || '\u{1F3AF}') + ' ' + ca.name + (ca.hasKg ? ' (kg)' : '');
+    label.textContent = (ca.icon || '\u{1F3AF}') + ' ' + ca.name;
+    const info = document.createElement('span');
+    info.style.cssText = 'color:var(--text3);font-size:10px';
+    info.textContent = fmtFields(fields);
     const del = document.createElement('button');
     del.style.cssText = 'background:none;border:none;color:var(--text3);cursor:pointer;font-size:13px;padding:0 4px';
     del.textContent = '\u00D7';
     del.title = 'Remove activity type';
     del.onclick = () => {
       state.customActivities.splice(i, 1);
-      save(); renderManageActivities();
-      // Refresh the type dropdown
-      const sel = document.getElementById('actType');
-      const cur = sel.value;
-      sel.innerHTML = '';
-      getAllActivityTypes().forEach(t => {
-        const o = document.createElement('option');
-        o.value = t.id; o.textContent = t.icon + ' ' + t.name;
-        sel.appendChild(o);
-      });
-      if (sel.querySelector('option[value="' + cur + '"]')) sel.value = cur;
-      toggleActKg();
+      save(); renderManageActivities(); refreshActDropdown();
     };
-    row.appendChild(label); row.appendChild(del);
+    row.appendChild(label); row.appendChild(info); row.appendChild(del);
     container.appendChild(row);
   });
 
@@ -2311,12 +2333,25 @@ function renderManageActivities() {
   const nameInp = document.createElement('input'); nameInp.type = 'text'; nameInp.placeholder = 'Activity name';
   nameInp.style.cssText = 'flex:1;min-width:80px;font-size:11px;padding:4px 6px;background:var(--bg3);color:var(--text);border:1px solid var(--border);border-radius:4px;font-family:inherit';
 
-  // Has kg checkbox
-  const kgLabel = document.createElement('label');
-  kgLabel.style.cssText = 'font-size:10px;color:var(--text2);display:flex;align-items:center;gap:2px;cursor:pointer';
-  const kgCheck = document.createElement('input'); kgCheck.type = 'checkbox';
-  kgLabel.appendChild(kgCheck);
-  kgLabel.appendChild(document.createTextNode('kg'));
+  // Field checkboxes (km, min, kg, m↑)
+  const fieldDefs = [
+    { key: 'km', label: 'km', checked: true },
+    { key: 'min', label: 'min', checked: true },
+    { key: 'kg', label: 'kg', checked: false },
+    { key: 'elev', label: 'm\u2191', checked: false }
+  ];
+  const checks = {};
+  const checkRow = document.createElement('div');
+  checkRow.style.cssText = 'display:flex;gap:6px;width:100%;margin-top:2px';
+  fieldDefs.forEach(fd => {
+    const lbl = document.createElement('label');
+    lbl.style.cssText = 'font-size:10px;color:var(--text2);display:flex;align-items:center;gap:2px;cursor:pointer';
+    const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = fd.checked;
+    checks[fd.key] = cb;
+    lbl.appendChild(cb);
+    lbl.appendChild(document.createTextNode(fd.label));
+    checkRow.appendChild(lbl);
+  });
 
   // Add button
   const addBtn = document.createElement('button');
@@ -2326,31 +2361,23 @@ function renderManageActivities() {
     const name = nameInp.value.trim();
     if (!name) return;
     if (!state.customActivities) state.customActivities = [];
-    // Generate unique id from name
     const id = 'custom_' + name.toLowerCase().replace(/[^a-z0-9]/g, '_');
     if (getAllActivityTypes().some(t => t.id === id || t.name.toLowerCase() === name.toLowerCase())) {
       alert('Activity "' + name + '" already exists.');
       return;
     }
-    state.customActivities.push({ id, name, icon: iconSel.value, hasKg: kgCheck.checked });
+    const fields = Object.keys(checks).filter(k => checks[k].checked);
+    if (fields.length === 0) { alert('Select at least one field.'); return; }
+    state.customActivities.push({ id, name, icon: iconSel.value, fields });
     save();
-    renderManageActivities();
-    // Refresh the type dropdown
-    const sel = document.getElementById('actType');
-    sel.innerHTML = '';
-    getAllActivityTypes().forEach(t => {
-      const o = document.createElement('option');
-      o.value = t.id; o.textContent = t.icon + ' ' + t.name;
-      sel.appendChild(o);
-    });
-    sel.value = id;
-    toggleActKg();
+    renderManageActivities(); refreshActDropdown(id);
   };
 
   nameInp.onkeydown = (e) => { if (e.key === 'Enter') addBtn.click(); };
 
-  form.appendChild(iconSel); form.appendChild(nameInp); form.appendChild(kgLabel); form.appendChild(addBtn);
+  form.appendChild(iconSel); form.appendChild(nameInp); form.appendChild(addBtn);
   container.appendChild(form);
+  container.appendChild(checkRow);
 }
 
 // ============================================================================
