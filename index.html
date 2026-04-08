@@ -2869,10 +2869,20 @@ function renderHabitsBar() {
   bar.innerHTML = '';
   const habits = state.dailyHabits || [];
 
-  // Toggle body padding for sticky bar
-  document.body.classList.toggle('has-habits', habits.length > 0);
+  // Toggle body padding for sticky bar (always show bar — it has a + button when empty)
+  document.body.classList.add('has-habits');
 
-  if (habits.length === 0) return;
+  if (habits.length === 0) {
+    // Show just the gear button so user can add their first habit
+    const gear = document.createElement('button');
+    gear.className = 'habit-manage-btn';
+    gear.textContent = '+';
+    gear.title = 'Add daily habit';
+    gear.style.cssText = 'margin:0 auto';
+    gear.onclick = () => openHabitsManage();
+    bar.appendChild(gear);
+    return;
+  }
 
   const todayKey = dk(today);
 
