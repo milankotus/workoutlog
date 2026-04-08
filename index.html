@@ -702,6 +702,23 @@
     font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--text2);
     text-align: center; margin-top: 8px;
   }
+  /* 7-day history strip in quick-add modal */
+  .habit-history-strip {
+    display: flex; gap: 4px; justify-content: center; margin-bottom: 10px;
+  }
+  .habit-history-day {
+    display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 32px;
+  }
+  .habit-history-day .h-day-label {
+    font-size: 9px; color: var(--text3); font-weight: 500; text-transform: uppercase;
+  }
+  .habit-history-day .h-day-val {
+    font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 600;
+    width: 28px; height: 28px; border-radius: 6px; display: flex; align-items: center;
+    justify-content: center;
+  }
+  .habit-history-day.is-today .h-day-label { color: var(--accent2); font-weight: 700; }
+  .habit-history-day.is-today .h-day-val { border: 1px solid var(--accent); }
 
   /* === MANAGE HABITS MODAL === */
   .habits-manage-overlay {
@@ -2618,6 +2635,15 @@ function exportCSV() {
         csv += [k, DAY_NAMES[d.getDay()], 'Meal: ' + m.name, m.kcal + ' kCal', (m.protein || 0) + 'g protein'].join(';') + '\n';
       });
     }
+    // Daily habits
+    if (day.habits) {
+      for (const [hi, hd] of Object.entries(day.habits)) {
+        const habit = (state.dailyHabits || [])[parseInt(hi)];
+        if (!habit || !hd.entries || !hd.entries.length) continue;
+        const total = hd.entries.reduce((s, e) => s + (parseFloat(e) || 0), 0);
+        csv += [k, DAY_NAMES[d.getDay()], 'Habit: ' + habit.name, fmtNum(total) + ' ' + habit.unit, hd.entries.length + ' entries'].join(';') + '\n';
+      }
+    }
   });
   dl(new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' }),
     'workout_log_' + dk(today) + '.csv');
@@ -3003,7 +3029,7 @@ function closeHabitAdd() {
   habitAddIndex = null;
 }
 
-/** Render the list of today's entries inside the quick-add modal */
+/** Render the list of today's entries inside the quick-add modal, plus 7-day history strip */
 function renderHabitAddEntries() {
   if (habitAddIndex === null) return;
   const habit = state.dailyHabits[habitAddIndex];
@@ -3012,6 +3038,43 @@ function renderHabitAddEntries() {
 
   const list = document.getElementById('habitAddEntries');
   list.innerHTML = '';
+
+  // 7-day history strip (today + 6 previous days)
+  const strip = document.createElement('div');
+  strip.className = 'habit-history-strip';
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(today);
+    d.setDate(d.getDate() - i);
+    const key = dk(d);
+    const dayEntries = getHabitEntries(key, habitAddIndex);
+    const dayTotal = dayEntries.reduce((s, e) => s + (parseFloat(e) || 0), 0);
+    const isToday = i === 0;
+
+    const cell = document.createElement('div');
+    cell.className = 'habit-history-day' + (isToday ? ' is-today' : '');
+
+    const label = document.createElement('div');
+    label.className = 'h-day-label';
+    label.textContent = DAY_SHORT[d.getDay()];
+    cell.appendChild(label);
+
+    const val = document.createElement('div');
+    val.className = 'h-day-val';
+    // Color based on completion: gray=none, goalColor if target set, green if no target
+    if (dayTotal === 0) {
+      val.style.background = 'var(--bg3)';
+      val.style.color = 'var(--text3)';
+      val.textContent = '–';
+    } else {
+      const color = habit.target > 0 ? goalColor(dayTotal, habit.target) : 'var(--green)';
+      val.style.background = color.startsWith('hsl') ? color.replace('50%)', '15%)') : 'rgba(0,184,148,.15)';
+      val.style.color = color;
+      val.textContent = fmtNum(dayTotal);
+    }
+    cell.appendChild(val);
+    strip.appendChild(cell);
+  }
+  list.appendChild(strip);
   entries.forEach((val, i) => {
     const item = document.createElement('div');
     item.className = 'habit-entry-item';
