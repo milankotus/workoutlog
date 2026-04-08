@@ -608,166 +608,6 @@
     color: var(--text3); font-size: 12px;
   }
 
-  /* === DAILY HABITS STICKY BAR === */
-  .habits-bar {
-    position: fixed; bottom: 0; left: 0; right: 0; z-index: 50;
-    background: var(--bg2); border-top: 1px solid var(--border);
-    padding: 8px 12px; display: flex; align-items: center; gap: 8px;
-    overflow-x: auto; -webkit-overflow-scrolling: touch;
-    box-shadow: 0 -4px 20px rgba(0,0,0,.3);
-  }
-  .habits-bar:empty { display: none; }
-  .habits-bar .habit-pill {
-    display: flex; align-items: center; gap: 6px; flex-shrink: 0;
-    background: var(--bg3); border: 1px solid var(--border); border-radius: 20px;
-    padding: 5px 10px 5px 12px; cursor: pointer; transition: all .15s;
-  }
-  .habits-bar .habit-pill:hover { border-color: var(--accent); }
-  .habits-bar .habit-pill .habit-name {
-    font-size: 12px; font-weight: 500; color: var(--text); white-space: nowrap;
-  }
-  .habits-bar .habit-pill .habit-progress {
-    font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 600;
-    white-space: nowrap;
-  }
-  .habits-bar .habit-pill .habit-streak {
-    font-size: 9px; color: var(--orange); font-weight: 600; white-space: nowrap;
-  }
-  .habits-bar .habit-pill .habit-add-btn {
-    width: 22px; height: 22px; border-radius: 50%; border: 1px solid var(--border);
-    background: var(--bg2); color: var(--green); cursor: pointer; font-size: 14px;
-    display: flex; align-items: center; justify-content: center; transition: all .15s;
-    flex-shrink: 0; padding: 0;
-  }
-  .habits-bar .habit-pill .habit-add-btn:hover { background: var(--green); color: white; border-color: var(--green); }
-  .habits-bar .habit-manage-btn {
-    width: 28px; height: 28px; border-radius: 50%; border: 1px dashed var(--border);
-    background: var(--bg2); color: var(--text3); cursor: pointer; font-size: 14px;
-    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
-    transition: all .15s; padding: 0;
-  }
-  .habits-bar .habit-manage-btn:hover { border-color: var(--accent); color: var(--accent2); }
-
-  /* Mini progress bar inside each pill */
-  .habit-pill .habit-bar-wrap {
-    width: 40px; height: 5px; background: var(--bg); border-radius: 3px; overflow: hidden; flex-shrink: 0;
-  }
-  .habit-pill .habit-bar-fill {
-    height: 100%; border-radius: 3px; transition: width .3s;
-  }
-
-  /* === DAILY HABITS QUICK-ADD MODAL === */
-  .habit-add-overlay {
-    display: none; position: fixed; inset: 0; background: rgba(0,0,0,.6);
-    z-index: 200; align-items: center; justify-content: center;
-  }
-  .habit-add-overlay.open { display: flex; }
-  .habit-add-box {
-    background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius);
-    padding: 16px; width: 300px; max-width: 90vw;
-  }
-  .habit-add-box h3 { font-size: 14px; font-weight: 600; color: var(--accent2); margin-bottom: 8px; }
-  .habit-add-box .habit-entries {
-    max-height: 120px; overflow-y: auto; margin-bottom: 8px;
-  }
-  .habit-add-box .habit-entry-item {
-    display: flex; align-items: center; gap: 6px; padding: 3px 6px;
-    background: var(--bg3); border-radius: 4px; margin-bottom: 2px; font-size: 12px;
-  }
-  .habit-add-box .habit-entry-item .habit-entry-val {
-    font-family: 'JetBrains Mono', monospace; font-weight: 600; color: var(--green); flex: 1;
-  }
-  .habit-add-box .habit-entry-item .habit-entry-time {
-    font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--text3);
-  }
-  .habit-add-box .habit-entry-item button {
-    background: none; border: none; color: var(--text3); cursor: pointer; font-size: 13px; padding: 0 2px;
-  }
-  .habit-add-box .habit-entry-item button:hover { color: var(--red); }
-  .habit-add-box .habit-input-row {
-    display: flex; gap: 6px; align-items: center;
-  }
-  .habit-add-box .habit-input-row input {
-    flex: 1; font-family: 'JetBrains Mono', monospace; font-size: 14px;
-    padding: 6px 8px; background: var(--bg3); border: 1px solid var(--border);
-    color: var(--text); border-radius: var(--radius-sm); outline: none; text-align: center;
-  }
-  .habit-add-box .habit-input-row input:focus { border-color: var(--accent); }
-  .habit-add-box .habit-input-row button {
-    background: var(--green); border: none; color: white; padding: 6px 14px;
-    border-radius: var(--radius-sm); cursor: pointer; font-family: inherit; font-weight: 600; font-size: 13px;
-  }
-  .habit-add-box .habit-input-row button:hover { background: var(--green2); color: var(--bg); }
-  .habit-add-box .habit-total {
-    font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--text2);
-    text-align: center; margin-top: 8px;
-  }
-  /* 7-day history strip in quick-add modal */
-  .habit-history-strip {
-    display: flex; gap: 4px; justify-content: center; margin-bottom: 10px;
-  }
-  .habit-history-day {
-    display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 32px;
-  }
-  .habit-history-day .h-day-label {
-    font-size: 9px; color: var(--text3); font-weight: 500; text-transform: uppercase;
-  }
-  .habit-history-day .h-day-val {
-    font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 600;
-    width: 28px; height: 28px; border-radius: 6px; display: flex; align-items: center;
-    justify-content: center;
-  }
-  .habit-history-day.is-today .h-day-label { color: var(--accent2); font-weight: 700; }
-  .habit-history-day.is-today .h-day-val { border: 1px solid var(--accent); }
-
-  /* === MANAGE HABITS MODAL === */
-  .habits-manage-overlay {
-    display: none; position: fixed; inset: 0; background: rgba(0,0,0,.6);
-    z-index: 200; align-items: center; justify-content: center;
-  }
-  .habits-manage-overlay.open { display: flex; }
-  .habits-manage-box {
-    background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius);
-    padding: 20px; width: 400px; max-width: 95vw; max-height: 80vh; overflow-y: auto;
-  }
-  .habits-manage-box h3 { font-size: 15px; font-weight: 600; color: var(--accent2); margin-bottom: 10px; }
-  .habits-manage-item {
-    display: flex; align-items: center; gap: 8px; margin-bottom: 4px;
-    padding: 5px 8px; background: var(--bg3); border-radius: var(--radius-sm); font-size: 13px;
-  }
-  .habits-manage-item .habit-m-name { flex: 1; color: var(--text); }
-  .habits-manage-item .habit-m-info {
-    font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--text3);
-  }
-  .habits-manage-item button {
-    background: none; border: none; color: var(--text3); cursor: pointer; font-size: 14px; padding: 0 4px;
-  }
-  .habits-manage-item button:hover { color: var(--red); }
-  .habits-manage-add {
-    display: flex; gap: 6px; margin-top: 10px; align-items: center; flex-wrap: wrap;
-  }
-  .habits-manage-add input {
-    font-family: inherit; font-size: 13px; padding: 6px 8px;
-    background: var(--bg3); border: 1px solid var(--border); color: var(--text);
-    border-radius: var(--radius-sm); outline: none;
-  }
-  .habits-manage-add input:focus { border-color: var(--accent); }
-  .habits-manage-add .habit-name-inp { flex: 1; min-width: 100px; }
-  .habits-manage-add .habit-target-inp { width: 60px; text-align: center; font-family: 'JetBrains Mono', monospace; }
-  .habits-manage-add select {
-    font-family: inherit; font-size: 12px; padding: 5px 6px;
-    background: var(--bg3); border: 1px solid var(--border); color: var(--text);
-    border-radius: var(--radius-sm); outline: none; cursor: pointer;
-  }
-  .habits-manage-add .add-btn {
-    background: var(--green); border: none; color: white; padding: 6px 14px;
-    border-radius: var(--radius-sm); cursor: pointer; font-family: inherit; font-weight: 600; font-size: 13px;
-  }
-  .habits-manage-add .add-btn:hover { background: var(--green2); color: var(--bg); }
-
-  /* Space at bottom so sticky bar doesn't cover content */
-  body.has-habits { padding-bottom: 56px; }
-
   /* === MOBILE RESPONSIVE === */
   @media (max-width: 600px) {
     body { padding: 8px; }
@@ -944,42 +784,6 @@
   </div>
 </div>
 
-<!-- === DAILY HABITS STICKY BAR — rendered by renderHabitsBar() === -->
-<div class="habits-bar" id="habitsBar"></div>
-
-<!-- === DAILY HABITS QUICK-ADD MODAL — log reps/duration for a habit === -->
-<div class="habit-add-overlay" id="habitAddOverlay" onclick="if(event.target===this)closeHabitAdd()">
-  <div class="habit-add-box">
-    <h3 id="habitAddTitle">Log</h3>
-    <div class="habit-entries" id="habitAddEntries"></div>
-    <div class="habit-input-row">
-      <input type="text" inputmode="decimal" id="habitAddInp" placeholder="reps" onkeydown="if(event.key==='Enter')submitHabitEntry()" oninput="this.value=normalizeNum(this.value)">
-      <button onclick="submitHabitEntry()">Add</button>
-    </div>
-    <div class="habit-total" id="habitAddTotal"></div>
-    <button class="manage-close" style="margin-top:10px" onclick="closeHabitAdd()">Close</button>
-  </div>
-</div>
-
-<!-- === MANAGE DAILY HABITS MODAL === -->
-<div class="habits-manage-overlay" id="habitsManageOverlay" onclick="if(event.target===this)closeHabitsManage()">
-  <div class="habits-manage-box">
-    <h3>Daily Habits</h3>
-    <div id="habitsManageList"></div>
-    <div class="habits-manage-add">
-      <input type="text" class="habit-name-inp" id="newHabitName" placeholder="Habit name..." onkeydown="if(event.key==='Enter')addDailyHabit()">
-      <input type="text" inputmode="numeric" class="habit-target-inp" id="newHabitTarget" placeholder="Goal" oninput="this.value=normalizeNum(this.value)">
-      <select id="newHabitUnit">
-        <option value="reps">reps</option>
-        <option value="min">min</option>
-        <option value="sec">sec</option>
-      </select>
-      <button class="add-btn" onclick="addDailyHabit()">Add</button>
-    </div>
-    <button class="manage-close" style="margin-top:12px" onclick="closeHabitsManage()">Close</button>
-  </div>
-</div>
-
 <script>
 // ============================================================================
 // CONSTANTS
@@ -1110,8 +914,6 @@ function migrate() {
   if (!state.hiddenMeals) state.hiddenMeals = [];
   // Ensure customActivities array exists (user-defined activity types)
   if (!state.customActivities) state.customActivities = [];
-  // Ensure dailyHabits array exists (habits tracked daily outside workout plan)
-  if (!state.dailyHabits) state.dailyHabits = [];
 }
 
 // ============================================================================
@@ -1198,7 +1000,6 @@ function cloudLoad() {
       localStorage.setItem(LS, JSON.stringify(state));
       _skipCloud = false;
       render();
-      renderHabitsBar();
     }
     setSyncStatus('synced');
   })
@@ -2635,15 +2436,6 @@ function exportCSV() {
         csv += [k, DAY_NAMES[d.getDay()], 'Meal: ' + m.name, m.kcal + ' kCal', (m.protein || 0) + 'g protein'].join(';') + '\n';
       });
     }
-    // Daily habits
-    if (day.habits) {
-      for (const [hi, hd] of Object.entries(day.habits)) {
-        const habit = (state.dailyHabits || [])[parseInt(hi)];
-        if (!habit || !hd.entries || !hd.entries.length) continue;
-        const total = hd.entries.reduce((s, e) => s + (parseFloat(e) || 0), 0);
-        csv += [k, DAY_NAMES[d.getDay()], 'Habit: ' + habit.name, fmtNum(total) + ' ' + habit.unit, hd.entries.length + ' entries'].join(';') + '\n';
-      }
-    }
   });
   dl(new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' }),
     'workout_log_' + dk(today) + '.csv');
@@ -2664,7 +2456,7 @@ function importJSON(e) {
   r.onload = ev => {
     try {
       state = JSON.parse(ev.target.result);
-      migrate(); save(); render(); renderHabitsBar();
+      migrate(); save(); render();
       alert('Data imported successfully.');
     } catch(err) { alert('Error: ' + err.message); }
   };
@@ -2675,7 +2467,7 @@ function importJSON(e) {
 /** Delete all data (double confirmation) */
 function clearAllData() {
   if (confirm('Delete ALL data?') && confirm('Are you sure? Export a backup first.')) {
-    state = defaultState(); save(); render(); renderHabitsBar();
+    state = defaultState(); save(); render();
   }
 }
 
@@ -2880,337 +2672,6 @@ function drawCombinedChart(canvasId, seriesList) {
 }
 
 // ============================================================================
-// DAILY HABITS
-// ============================================================================
-
-/** Currently open habit index for the quick-add modal (null = closed) */
-let habitAddIndex = null;
-
-/**
- * Render the sticky habits bar at the bottom of the screen.
- * Shows one pill per daily habit with today's progress, a mini bar, streak, and + button.
- */
-function renderHabitsBar() {
-  const bar = document.getElementById('habitsBar');
-  bar.innerHTML = '';
-  const habits = state.dailyHabits || [];
-
-  // Toggle body padding for sticky bar (always show bar — it has a + button when empty)
-  document.body.classList.add('has-habits');
-
-  if (habits.length === 0) {
-    // Show just the gear button so user can add their first habit
-    const gear = document.createElement('button');
-    gear.className = 'habit-manage-btn';
-    gear.textContent = '+';
-    gear.title = 'Add daily habit';
-    gear.style.cssText = 'margin:0 auto';
-    gear.onclick = () => openHabitsManage();
-    bar.appendChild(gear);
-    return;
-  }
-
-  const todayKey = dk(today);
-
-  habits.forEach((habit, i) => {
-    const pill = document.createElement('div');
-    pill.className = 'habit-pill';
-
-    // Habit name
-    const name = document.createElement('span');
-    name.className = 'habit-name';
-    name.textContent = habit.name;
-    pill.appendChild(name);
-
-    // Today's entries total
-    const dayData = state.days[todayKey];
-    const entries = (dayData && dayData.habits && dayData.habits[i]) ? dayData.habits[i].entries : [];
-    const total = entries.reduce((s, e) => s + (parseFloat(e) || 0), 0);
-
-    // Progress text (e.g. "75/100 reps")
-    const progress = document.createElement('span');
-    progress.className = 'habit-progress';
-    const pct = habit.target > 0 ? Math.min(total / habit.target, 1) : (total > 0 ? 1 : 0);
-    progress.style.color = habit.target > 0 ? goalColor(total, habit.target) : 'var(--green)';
-    progress.textContent = fmtNum(total) + (habit.target > 0 ? '/' + habit.target : '') + ' ' + habit.unit;
-    pill.appendChild(progress);
-
-    // Mini progress bar (only if target is set)
-    if (habit.target > 0) {
-      const barWrap = document.createElement('div');
-      barWrap.className = 'habit-bar-wrap';
-      const barFill = document.createElement('div');
-      barFill.className = 'habit-bar-fill';
-      barFill.style.width = Math.round(pct * 100) + '%';
-      barFill.style.background = goalColor(total, habit.target);
-      barWrap.appendChild(barFill);
-      pill.appendChild(barWrap);
-    }
-
-    // Streak badge
-    const streak = getHabitStreak(i);
-    if (streak > 0) {
-      const streakEl = document.createElement('span');
-      streakEl.className = 'habit-streak';
-      streakEl.textContent = streak + 'd';
-      streakEl.title = streak + ' day streak';
-      pill.appendChild(streakEl);
-    }
-
-    // + button to log entry
-    const addBtn = document.createElement('button');
-    addBtn.className = 'habit-add-btn';
-    addBtn.textContent = '+';
-    addBtn.onclick = (e) => { e.stopPropagation(); openHabitAdd(i); };
-    pill.appendChild(addBtn);
-
-    // Click pill body to also open the log
-    pill.onclick = () => openHabitAdd(i);
-
-    bar.appendChild(pill);
-  });
-
-  // Gear button to manage habits
-  const gear = document.createElement('button');
-  gear.className = 'habit-manage-btn';
-  gear.textContent = '\u2699';
-  gear.title = 'Manage daily habits';
-  gear.onclick = () => openHabitsManage();
-  bar.appendChild(gear);
-}
-
-/**
- * Count consecutive days (ending today or yesterday) where the habit had at least one entry.
- * Today counts if it has entries; streak looks backwards from the most recent day with data.
- */
-function getHabitStreak(habitIdx) {
-  const habits = state.dailyHabits || [];
-  if (!habits[habitIdx]) return 0;
-
-  let streak = 0;
-  const d = new Date(today);
-
-  // Check if today has entries — if not, start from yesterday
-  const todayEntries = getHabitEntries(dk(d), habitIdx);
-  if (todayEntries.length === 0) {
-    d.setDate(d.getDate() - 1);
-  }
-
-  // Count backwards
-  for (let i = 0; i < 365; i++) {
-    const entries = getHabitEntries(dk(d), habitIdx);
-    if (entries.length > 0) { streak++; d.setDate(d.getDate() - 1); }
-    else break;
-  }
-  return streak;
-}
-
-/** Get entries array for a habit on a given date key */
-function getHabitEntries(dateKey, habitIdx) {
-  const day = state.days[dateKey];
-  if (!day || !day.habits || !day.habits[habitIdx]) return [];
-  return day.habits[habitIdx].entries || [];
-}
-
-/** Open the quick-add modal for a specific habit */
-function openHabitAdd(idx) {
-  habitAddIndex = idx;
-  const habit = state.dailyHabits[idx];
-  document.getElementById('habitAddTitle').textContent = habit.name;
-  document.getElementById('habitAddInp').placeholder = habit.unit;
-  document.getElementById('habitAddOverlay').classList.add('open');
-  renderHabitAddEntries();
-  // Focus input after modal opens
-  setTimeout(() => document.getElementById('habitAddInp').focus(), 50);
-}
-
-function closeHabitAdd() {
-  document.getElementById('habitAddOverlay').classList.remove('open');
-  habitAddIndex = null;
-}
-
-/** Render the list of today's entries inside the quick-add modal, plus 7-day history strip */
-function renderHabitAddEntries() {
-  if (habitAddIndex === null) return;
-  const habit = state.dailyHabits[habitAddIndex];
-  const todayKey = dk(today);
-  const entries = getHabitEntries(todayKey, habitAddIndex);
-
-  const list = document.getElementById('habitAddEntries');
-  list.innerHTML = '';
-
-  // 7-day history strip (today + 6 previous days)
-  const strip = document.createElement('div');
-  strip.className = 'habit-history-strip';
-  for (let i = 6; i >= 0; i--) {
-    const d = new Date(today);
-    d.setDate(d.getDate() - i);
-    const key = dk(d);
-    const dayEntries = getHabitEntries(key, habitAddIndex);
-    const dayTotal = dayEntries.reduce((s, e) => s + (parseFloat(e) || 0), 0);
-    const isToday = i === 0;
-
-    const cell = document.createElement('div');
-    cell.className = 'habit-history-day' + (isToday ? ' is-today' : '');
-
-    const label = document.createElement('div');
-    label.className = 'h-day-label';
-    label.textContent = DAY_SHORT[d.getDay()];
-    cell.appendChild(label);
-
-    const val = document.createElement('div');
-    val.className = 'h-day-val';
-    // Color based on completion: gray=none, goalColor if target set, green if no target
-    if (dayTotal === 0) {
-      val.style.background = 'var(--bg3)';
-      val.style.color = 'var(--text3)';
-      val.textContent = '–';
-    } else {
-      const color = habit.target > 0 ? goalColor(dayTotal, habit.target) : 'var(--green)';
-      val.style.background = color.startsWith('hsl') ? color.replace('50%)', '15%)') : 'rgba(0,184,148,.15)';
-      val.style.color = color;
-      val.textContent = fmtNum(dayTotal);
-    }
-    cell.appendChild(val);
-    strip.appendChild(cell);
-  }
-  list.appendChild(strip);
-  entries.forEach((val, i) => {
-    const item = document.createElement('div');
-    item.className = 'habit-entry-item';
-    const v = document.createElement('span');
-    v.className = 'habit-entry-val';
-    v.textContent = fmtNum(parseFloat(val) || 0) + ' ' + habit.unit;
-    const del = document.createElement('button');
-    del.textContent = '\u00D7';
-    del.onclick = () => { removeHabitEntry(habitAddIndex, i); };
-    item.appendChild(v); item.appendChild(del);
-    list.appendChild(item);
-  });
-
-  // Total
-  const total = entries.reduce((s, e) => s + (parseFloat(e) || 0), 0);
-  const totalEl = document.getElementById('habitAddTotal');
-  let txt = 'Total: ' + fmtNum(total) + ' ' + habit.unit;
-  if (habit.target > 0) {
-    const remaining = habit.target - total;
-    txt += remaining > 0 ? ' \u2014 ' + fmtNum(remaining) + ' left' : ' \u2014 done!';
-  }
-  totalEl.textContent = txt;
-}
-
-/** Submit a new entry from the quick-add modal input */
-function submitHabitEntry() {
-  if (habitAddIndex === null) return;
-  const inp = document.getElementById('habitAddInp');
-  const val = parseFloat(normalizeNum(inp.value));
-  if (!val || val <= 0) return;
-
-  const todayKey = dk(today);
-  if (!state.days[todayKey]) state.days[todayKey] = { exercises: [] };
-  const day = state.days[todayKey];
-  if (!day.habits) day.habits = {};
-  if (!day.habits[habitAddIndex]) day.habits[habitAddIndex] = { entries: [] };
-  day.habits[habitAddIndex].entries.push(String(val));
-
-  save();
-  inp.value = '';
-  inp.focus();
-  renderHabitAddEntries();
-  renderHabitsBar();
-}
-
-/** Remove a single entry from today's habit log */
-function removeHabitEntry(habitIdx, entryIdx) {
-  const todayKey = dk(today);
-  const day = state.days[todayKey];
-  if (day && day.habits && day.habits[habitIdx]) {
-    day.habits[habitIdx].entries.splice(entryIdx, 1);
-    save();
-    renderHabitAddEntries();
-    renderHabitsBar();
-  }
-}
-
-/** Open the manage daily habits modal */
-function openHabitsManage() {
-  document.getElementById('habitsManageOverlay').classList.add('open');
-  renderHabitsManage();
-}
-
-function closeHabitsManage() {
-  document.getElementById('habitsManageOverlay').classList.remove('open');
-}
-
-/** Render the manage habits list */
-function renderHabitsManage() {
-  const list = document.getElementById('habitsManageList');
-  list.innerHTML = '';
-  (state.dailyHabits || []).forEach((habit, i) => {
-    const item = document.createElement('div');
-    item.className = 'habits-manage-item';
-
-    const name = document.createElement('span');
-    name.className = 'habit-m-name';
-    name.textContent = habit.name;
-    item.appendChild(name);
-
-    const info = document.createElement('span');
-    info.className = 'habit-m-info';
-    info.textContent = (habit.target > 0 ? habit.target + ' ' : '') + habit.unit + '/day';
-    item.appendChild(info);
-
-    const del = document.createElement('button');
-    del.textContent = '\u00D7';
-    del.onclick = () => {
-      if (confirm('Remove habit "' + habit.name + '"?')) {
-        state.dailyHabits.splice(i, 1);
-        // Reindex habits data in all days
-        reindexHabits(i);
-        save(); renderHabitsManage(); renderHabitsBar();
-      }
-    };
-    item.appendChild(del);
-    list.appendChild(item);
-  });
-}
-
-/** After deleting a habit at index, shift all higher-indexed habit data down in all days */
-function reindexHabits(removedIdx) {
-  for (const day of Object.values(state.days)) {
-    if (!day.habits) continue;
-    const newHabits = {};
-    for (const [k, v] of Object.entries(day.habits)) {
-      const idx = parseInt(k);
-      if (idx === removedIdx) continue;
-      newHabits[idx > removedIdx ? idx - 1 : idx] = v;
-    }
-    day.habits = newHabits;
-  }
-}
-
-/** Add a new daily habit from the manage modal inputs */
-function addDailyHabit() {
-  const nameInp = document.getElementById('newHabitName');
-  const targetInp = document.getElementById('newHabitTarget');
-  const unitSel = document.getElementById('newHabitUnit');
-  const name = nameInp.value.trim();
-  if (!name) return;
-  if (!state.dailyHabits) state.dailyHabits = [];
-  if (state.dailyHabits.some(h => h.name.toLowerCase() === name.toLowerCase())) {
-    alert('Habit "' + name + '" already exists.'); return;
-  }
-  state.dailyHabits.push({
-    name: name,
-    target: parseInt(targetInp.value) || 0,
-    unit: unitSel.value
-  });
-  save();
-  nameInp.value = ''; targetInp.value = '';
-  renderHabitsManage(); renderHabitsBar();
-}
-
-// ============================================================================
 // SEED TODAY — pre-fills today with sample data (only runs once, on first use)
 // ============================================================================
 
@@ -3234,7 +2695,6 @@ function addDailyHabit() {
 // Initial render (from localStorage), then pull latest from cloud.
 // cloudLoad() may re-render if cloud data is newer.
 render();
-renderHabitsBar();
 cloudLoad();
 </script>
 </body>
