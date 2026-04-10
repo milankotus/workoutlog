@@ -464,6 +464,7 @@
   .cardio-row input::placeholder { color: var(--text3); opacity: .4; font-size: 9px; }
   .cardio-label { font-size: 8px; color: var(--text3); text-transform: uppercase; letter-spacing: .5px; }
   .cardio-unit { font-size: 9px; color: var(--text3); flex-shrink: 0; }
+  .cardio-avg { font-size: 9px; color: var(--accent); flex-shrink: 0; font-family: 'JetBrains Mono', monospace; margin-left: 2px; }
 
   /* === CALORIE CELL — weight, eaten summary, meals button === */
   .calorie-cell {
@@ -1055,6 +1056,19 @@ function dk(d) {
   return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
 }
 
+/** Average of `field` over last 7 days ending at dateKey (inclusive). Skips missing days. */
+function avg7(field, dateKey) {
+  const parts = dateKey.split('-');
+  const base = new Date(+parts[0], +parts[1] - 1, +parts[2]);
+  let sum = 0, n = 0;
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(base); d.setDate(base.getDate() - i);
+    const dd = state.days[dk(d)];
+    if (dd && dd[field]) { const v = parseFloat(dd[field]); if (!isNaN(v)) { sum += v; n++; } }
+  }
+  return n ? (sum / n) : null;
+}
+
 /** Returns the Monday of the week containing date d */
 function getMonday(d) {
   const dd = new Date(d);
@@ -1310,7 +1324,10 @@ function render() {
     weightInp.placeholder = 'kg'; weightInp.value = dayData.weight || '';
     weightInp.oninput = () => { weightInp.value = normalizeNum(weightInp.value); state.days[cardioKey].weight = weightInp.value; save(); render(); };
     const weightUnit = document.createElement('span'); weightUnit.className = 'cardio-unit'; weightUnit.textContent = 'kg';
-    weightRow.appendChild(weightIcon); weightRow.appendChild(weightInp); weightRow.appendChild(weightUnit);
+    const weightAvg = avg7('weight', cardioKey);
+    const weightAvgSpan = document.createElement('span'); weightAvgSpan.className = 'cardio-avg';
+    weightAvgSpan.textContent = weightAvg !== null ? 'ø' + weightAvg.toFixed(1) : '';
+    weightRow.appendChild(weightIcon); weightRow.appendChild(weightInp); weightRow.appendChild(weightUnit); weightRow.appendChild(weightAvgSpan);
     calCell.appendChild(weightRow);
 
     // Waist row
@@ -1321,7 +1338,10 @@ function render() {
     waistInp.placeholder = 'cm'; waistInp.value = dayData.waist || '';
     waistInp.oninput = () => { waistInp.value = normalizeNum(waistInp.value); state.days[cardioKey].waist = waistInp.value; save(); render(); };
     const waistUnit = document.createElement('span'); waistUnit.className = 'cardio-unit'; waistUnit.textContent = 'cm';
-    waistRow.appendChild(waistIcon); waistRow.appendChild(waistInp); waistRow.appendChild(waistUnit);
+    const waistAvg = avg7('waist', cardioKey);
+    const waistAvgSpan = document.createElement('span'); waistAvgSpan.className = 'cardio-avg';
+    waistAvgSpan.textContent = waistAvg !== null ? 'ø' + waistAvg.toFixed(1) : '';
+    waistRow.appendChild(waistIcon); waistRow.appendChild(waistInp); waistRow.appendChild(waistUnit); waistRow.appendChild(waistAvgSpan);
     calCell.appendChild(waistRow);
 
     // Activities line (clickable)
