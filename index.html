@@ -564,6 +564,9 @@
   .meal-item .meal-prot {
     font-family: 'JetBrains Mono', monospace; color: var(--green); font-weight: 600; font-size: 11px;
   }
+  .meal-item .meal-ratio {
+    font-family: 'JetBrains Mono', monospace; color: var(--text3); font-size: 10px; white-space: nowrap;
+  }
 
   /* Hidden file input for JSON import */
   #fileInput { display: none; }
@@ -1949,9 +1952,14 @@ function renderMeals() {
       prot.replaceWith(inp); inp.focus(); inp.select();
     };
 
+    const ratio = document.createElement('span'); ratio.className = 'meal-ratio';
+    const mKcal = parseFloat(meal.kcal) || 0;
+    const mProt = parseFloat(meal.protein) || 0;
+    ratio.textContent = mKcal > 0 ? (mProt / mKcal * 100).toFixed(1) + 'g/100' : '—';
+
     const del = document.createElement('button'); del.className = 'meal-del'; del.textContent = '\u00D7';
     del.onclick = () => { day.meals.splice(i, 1); save(); renderMeals(); render(); };
-    item.appendChild(name); item.appendChild(kcal); item.appendChild(prot); item.appendChild(del);
+    item.appendChild(name); item.appendChild(kcal); item.appendChild(prot); item.appendChild(ratio); item.appendChild(del);
     list.appendChild(item);
   });
 
@@ -2093,6 +2101,7 @@ function renderSavedMeals() {
     { key: 'name', label: 'Name' },
     { key: 'kcal', label: 'kCal' },
     { key: 'protein', label: 'Prot' },
+    { key: 'ratio', label: 'p/kCal' },
   ];
   for (const s of sorts) {
     const btn = document.createElement('button');
@@ -2112,9 +2121,11 @@ function renderSavedMeals() {
 
   // Sort entries
   const dir = savedMealsSortAsc ? 1 : -1;
+  const ratioOf = (e) => e.kcal > 0 ? e.protein / e.kcal : 0;
   if (savedMealsSort === 'name') all.sort((a, b) => dir * a.name.localeCompare(b.name));
   else if (savedMealsSort === 'kcal') all.sort((a, b) => dir * (b.kcal - a.kcal));
   else if (savedMealsSort === 'protein') all.sort((a, b) => dir * (b.protein - a.protein));
+  else if (savedMealsSort === 'ratio') all.sort((a, b) => dir * (ratioOf(b) - ratioOf(a)));
   else all.sort((a, b) => dir * (b.count - a.count));
 
   for (const entry of all) {
@@ -2125,7 +2136,8 @@ function renderSavedMeals() {
     name.textContent = entry.name;
     const info = document.createElement('span');
     info.style.cssText = 'color:var(--text3);font-family:"JetBrains Mono",monospace;font-size:10px';
-    info.textContent = fmtNum(entry.kcal) + ' kCal / ' + fmtNum(entry.protein) + 'g · \u00D7' + entry.count;
+    const eRatio = entry.kcal > 0 ? (entry.protein / entry.kcal * 100).toFixed(1) + 'g/100' : '—';
+    info.textContent = fmtNum(entry.kcal) + ' kCal / ' + fmtNum(entry.protein) + 'g · ' + eRatio + ' · \u00D7' + entry.count;
     const del = document.createElement('button');
     del.style.cssText = 'background:none;border:none;color:var(--text3);cursor:pointer;font-size:13px;padding:0 4px';
     del.textContent = '\u00D7';
