@@ -1054,6 +1054,22 @@ function goalColor(current, goal) {
   return 'hsl(' + hue + ',70%,50%)';
 }
 
+/** Color-code a meal's protein/100kCal ratio relative to the base ratio (goal protein / goal calories * 100).
+    Above base → green (more green = higher), below → yellow to red gradient. Returns null if no goals set. */
+function ratioColor(ratio, base) {
+  if (!base || base <= 0) return null;
+  const t = ratio / base; // 1.0 = at base
+  // Below base: hue 0 (red) → 80 (yellow-green) as t goes 0→1
+  // Above base: hue 80 → 130 (deep green) as t goes 1→2+
+  let hue;
+  if (t <= 1) {
+    hue = t * 80;
+  } else {
+    hue = 80 + Math.min(t - 1, 1) * 50;
+  }
+  return 'hsl(' + Math.round(hue) + ',75%,48%)';
+}
+
 /** Date → "YYYY-MM-DD" string key for state.days */
 function dk(d) {
   return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
@@ -1955,7 +1971,13 @@ function renderMeals() {
     const ratio = document.createElement('span'); ratio.className = 'meal-ratio';
     const mKcal = parseFloat(meal.kcal) || 0;
     const mProt = parseFloat(meal.protein) || 0;
-    ratio.textContent = mKcal > 0 ? (mProt / mKcal * 100).toFixed(1) + 'g/100' : '—';
+    const mRatio = mKcal > 0 ? mProt / mKcal * 100 : 0;
+    ratio.textContent = mKcal > 0 ? mRatio.toFixed(1) + 'g/100' : '—';
+    const calG = state.goals && state.goals.calories || 0;
+    const proG = state.goals && state.goals.protein || 0;
+    const baseRatio = calG > 0 && proG > 0 ? proG / calG * 100 : 0;
+    const rCol = mKcal > 0 ? ratioColor(mRatio, baseRatio) : null;
+    if (rCol) ratio.style.color = rCol;
 
     const del = document.createElement('button'); del.className = 'meal-del'; del.textContent = '\u00D7';
     del.onclick = () => { day.meals.splice(i, 1); save(); renderMeals(); render(); };
@@ -2136,8 +2158,18 @@ function renderSavedMeals() {
     name.textContent = entry.name;
     const info = document.createElement('span');
     info.style.cssText = 'color:var(--text3);font-family:"JetBrains Mono",monospace;font-size:10px';
-    const eRatio = entry.kcal > 0 ? (entry.protein / entry.kcal * 100).toFixed(1) + 'g/100' : '—';
-    info.textContent = fmtNum(entry.kcal) + ' kCal / ' + fmtNum(entry.protein) + 'g · ' + eRatio + ' · \u00D7' + entry.count;
+    info.textContent = fmtNum(entry.kcal) + ' kCal / ' + fmtNum(entry.protein) + 'g · ';
+    const eRatioVal = entry.kcal > 0 ? entry.protein / entry.kcal * 100 : 0;
+    const eRatioSpan = document.createElement('span');
+    eRatioSpan.textContent = entry.kcal > 0 ? eRatioVal.toFixed(1) + 'g/100' : '—';
+    eRatioSpan.style.fontWeight = '600';
+    const smCalG = state.goals && state.goals.calories || 0;
+    const smProG = state.goals && state.goals.protein || 0;
+    const smBase = smCalG > 0 && smProG > 0 ? smProG / smCalG * 100 : 0;
+    const smCol = entry.kcal > 0 ? ratioColor(eRatioVal, smBase) : null;
+    if (smCol) eRatioSpan.style.color = smCol;
+    info.appendChild(eRatioSpan);
+    info.appendChild(document.createTextNode(' · \u00D7' + entry.count));
     const del = document.createElement('button');
     del.style.cssText = 'background:none;border:none;color:var(--text3);cursor:pointer;font-size:13px;padding:0 4px';
     del.textContent = '\u00D7';
