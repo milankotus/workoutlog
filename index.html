@@ -1663,6 +1663,13 @@ function renameExercise(oldName, newName) {
   save(); renderManage(); render();
 }
 
+/** Check if an exercise name appears in any logged day's exercise list */
+function isExerciseUsedInDays(name) {
+  return Object.values(state.days || {}).some(d =>
+    d.exercises && d.exercises.some(e => e.name === name)
+  );
+}
+
 /** Open the exercise management modal (add/remove exercises, configure sets/goals) */
 function openManage() {
   document.getElementById('manageOverlay').classList.add('open');
@@ -1767,6 +1774,10 @@ function renderManage() {
     // Delete button
     const del = document.createElement('button'); del.className = 'del-btn'; del.textContent = '×';
     del.onclick = () => {
+      if (isExerciseUsedInDays(ex.name)) {
+        alert('Cannot delete "' + ex.name + '" — it has been used in logged days. Archive it instead.');
+        return;
+      }
       if (confirm('Remove "' + ex.name + '"?')) {
         state.exercises.splice(i, 1); save(); renderManage(); render();
       }
@@ -1827,6 +1838,10 @@ function renderArchivedList() {
     // Delete button
     const del = document.createElement('button'); del.className = 'del-btn'; del.textContent = '\u00D7';
     del.onclick = () => {
+      if (isExerciseUsedInDays(ex.name)) {
+        alert('Cannot delete "' + ex.name + '" — it has been used in logged days.');
+        return;
+      }
       if (confirm('Permanently remove "' + ex.name + '"?')) {
         const idx = state.exercises.indexOf(ex);
         if (idx !== -1) state.exercises.splice(idx, 1);
