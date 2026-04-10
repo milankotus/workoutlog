@@ -2037,6 +2037,18 @@ function renderMeals() {
   }
   protGoalLine.appendChild(protGoalLabel); protGoalLine.appendChild(protGoalVal);
   totals.appendChild(protGoalLine);
+
+  // Base ratio line (only shown when both goals are set)
+  const cg = state.goals.calories || 0;
+  const pg = state.goals.protein || 0;
+  if (cg > 0 && pg > 0) {
+    const brLine = document.createElement('div'); brLine.className = 'meal-total-line';
+    const brLabel = document.createElement('span'); brLabel.className = 'label'; brLabel.textContent = 'Base ratio';
+    const brVal = document.createElement('span'); brVal.className = 'value';
+    brVal.textContent = (pg / cg * 100).toFixed(1) + ' g/100 kCal';
+    brLine.appendChild(brLabel); brLine.appendChild(brVal);
+    totals.appendChild(brLine);
+  }
 }
 
 /** Build map of all unique historical meals (excluding hidden ones). */
