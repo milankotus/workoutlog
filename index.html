@@ -2031,7 +2031,7 @@ function renderMeals() {
   if (state.goals.protein > 0) {
     const remaining = state.goals.protein - protTotal;
     const remSpan = document.createElement('span');
-    remSpan.style.cssText = 'margin-left:8px;color:' + (remaining >= 0 ? 'var(--green)' : 'var(--red)');
+    remSpan.style.cssText = 'margin-left:8px;color:' + (remaining >= 0 ? 'var(--red)' : 'var(--green)');
     remSpan.textContent = (remaining >= 0 ? fmtNum(remaining) + 'g left' : fmtNum(Math.abs(remaining)) + 'g over');
     protGoalVal.appendChild(remSpan);
   }
