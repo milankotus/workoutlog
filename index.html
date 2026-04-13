@@ -465,6 +465,8 @@
   .cardio-label { font-size: 8px; color: var(--text3); text-transform: uppercase; letter-spacing: .5px; }
   .cardio-unit { font-size: 9px; color: var(--text3); flex-shrink: 0; }
   .cardio-avg { font-size: 9px; color: var(--accent); flex-shrink: 0; font-family: 'JetBrains Mono', monospace; margin-left: 2px; }
+  /* Week-over-week delta: avg(last 7d) − avg(prior 7d). Neutral color — up/down not judged good/bad. */
+  .cardio-delta { font-size: 9px; color: var(--text2); flex-shrink: 0; font-family: 'JetBrains Mono', monospace; margin-left: 2px; }
 
   /* === CALORIE CELL — weight, eaten summary, meals button === */
   .calorie-cell {
@@ -1075,17 +1077,30 @@ function dk(d) {
   return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
 }
 
-/** Average of `field` over last 7 days ending at dateKey (inclusive). Skips missing days. */
-function avg7(field, dateKey) {
+/** Average of `field` over a `window`-day span ending `offset` days before dateKey (inclusive).
+ *  offset=0, window=7 → last 7 days ending at dateKey.
+ *  offset=7, window=7 → the 7 days before that. Skips missing days; returns null if no entries. */
+function avgRange(field, dateKey, offset, window) {
   const parts = dateKey.split('-');
   const base = new Date(+parts[0], +parts[1] - 1, +parts[2]);
   let sum = 0, n = 0;
-  for (let i = 0; i < 7; i++) {
-    const d = new Date(base); d.setDate(base.getDate() - i);
+  for (let i = 0; i < window; i++) {
+    const d = new Date(base); d.setDate(base.getDate() - offset - i);
     const dd = state.days[dk(d)];
     if (dd && dd[field]) { const v = parseFloat(dd[field]); if (!isNaN(v)) { sum += v; n++; } }
   }
   return n ? (sum / n) : null;
+}
+
+/** Average of `field` over last 7 days ending at dateKey (inclusive). Skips missing days. */
+function avg7(field, dateKey) { return avgRange(field, dateKey, 0, 7); }
+
+/** Week-over-week delta for `field` at dateKey: avg(last 7 days) − avg(prior 7 days).
+ *  Returns null if either window has zero logged entries. */
+function weekDelta(field, dateKey) {
+  const cur = avgRange(field, dateKey, 0, 7);
+  const prev = avgRange(field, dateKey, 7, 7);
+  return (cur === null || prev === null) ? null : (cur - prev);
 }
 
 /** Returns the Monday of the week containing date d */
@@ -1346,7 +1361,11 @@ function render() {
     const weightAvg = avg7('weight', cardioKey);
     const weightAvgSpan = document.createElement('span'); weightAvgSpan.className = 'cardio-avg';
     weightAvgSpan.textContent = weightAvg !== null ? 'ø' + weightAvg.toFixed(1) : '';
-    weightRow.appendChild(weightIcon); weightRow.appendChild(weightInp); weightRow.appendChild(weightUnit); weightRow.appendChild(weightAvgSpan);
+    // Week-over-week delta: shows "Δ+0.3" / "Δ−0.5" / "Δ-" (dash if either 7-day window is empty)
+    const weightDelta = weekDelta('weight', cardioKey);
+    const weightDeltaSpan = document.createElement('span'); weightDeltaSpan.className = 'cardio-delta';
+    weightDeltaSpan.textContent = weightDelta === null ? 'Δ-' : 'Δ' + (weightDelta >= 0 ? '+' : '−') + Math.abs(weightDelta).toFixed(1);
+    weightRow.appendChild(weightIcon); weightRow.appendChild(weightInp); weightRow.appendChild(weightUnit); weightRow.appendChild(weightAvgSpan); weightRow.appendChild(weightDeltaSpan);
     calCell.appendChild(weightRow);
 
     // Waist row
@@ -1360,7 +1379,11 @@ function render() {
     const waistAvg = avg7('waist', cardioKey);
     const waistAvgSpan = document.createElement('span'); waistAvgSpan.className = 'cardio-avg';
     waistAvgSpan.textContent = waistAvg !== null ? 'ø' + waistAvg.toFixed(1) : '';
-    waistRow.appendChild(waistIcon); waistRow.appendChild(waistInp); waistRow.appendChild(waistUnit); waistRow.appendChild(waistAvgSpan);
+    // Week-over-week delta (same logic as weight row)
+    const waistDelta = weekDelta('waist', cardioKey);
+    const waistDeltaSpan = document.createElement('span'); waistDeltaSpan.className = 'cardio-delta';
+    waistDeltaSpan.textContent = waistDelta === null ? 'Δ-' : 'Δ' + (waistDelta >= 0 ? '+' : '−') + Math.abs(waistDelta).toFixed(1);
+    waistRow.appendChild(waistIcon); waistRow.appendChild(waistInp); waistRow.appendChild(waistUnit); waistRow.appendChild(waistAvgSpan); waistRow.appendChild(waistDeltaSpan);
     calCell.appendChild(waistRow);
 
     // Activities line (clickable)
