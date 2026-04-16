@@ -264,6 +264,9 @@
   .wk-val { color: var(--text2); }              /* Past weeks — gray */
   .wk-val.cur { color: var(--green); font-weight: 500; }  /* Current week — green */
   .wk-none { color: var(--text3); }              /* No data — dash */
+  .wk-diff-pos { color: var(--green); font-weight: 500; }
+  .wk-diff-neg { color: var(--red); font-weight: 500; }
+  .wk-diff-zero { color: var(--text3); }
 
   /* === SET INPUT ROW — horizontal row of text inputs, one per set === */
   .sets-row {
@@ -1200,6 +1203,31 @@ function getRecentSets(dateKey, name, n) {
   return results;
 }
 
+/** Average of the per-session set sums for the last 5 days the exercise was scheduled
+ *  before `dateKey`. Skipped days count toward the 5-day window but are excluded from
+ *  the average (so a single skip narrows the sample to 4, two skips to 3, etc).
+ *  Unfilled set values count as 0. Returns null if no usable history. */
+function getRecent5Avg(dateKey, name) {
+  var dates = Object.keys(state.days).filter(function(k) { return k < dateKey; }).sort().reverse();
+  var sums = [];
+  var scheduled = 0;
+  for (var di = 0; di < dates.length && scheduled < 5; di++) {
+    var day = state.days[dates[di]];
+    if (!day || !day.exercises) continue;
+    var ex = null;
+    for (var ei = 0; ei < day.exercises.length; ei++) {
+      if (day.exercises[ei].name === name) { ex = day.exercises[ei]; break; }
+    }
+    if (!ex) continue;
+    scheduled++;
+    if (ex.skipped) continue;
+    var sum = (ex.sets || []).reduce(function(a, v) { return a + (parseInt(v) || 0); }, 0);
+    sums.push(sum);
+  }
+  if (!sums.length) return null;
+  return sums.reduce(function(a, v) { return a + v; }, 0) / sums.length;
+}
+
 /** Format a sets array as "26 · 23 · 20" for display. Returns null if no data.
  *  Appends " = {sum}" when multiple sets are all filled with numbers. */
 function fmtSets(s) {
@@ -1564,6 +1592,22 @@ function cell(d, dd, ei) {
       }
     }
     c.appendChild(nowLine);
+
+    // Δ5: today's set-sum vs avg of last 5 scheduled sessions (skipped excluded, no backfill)
+    if (!ex.skipped) {
+      const avg5 = getRecent5Avg(dk(d), ex.name);
+      const diffLine = document.createElement('div'); diffLine.className = 'wk-line';
+      if (avg5 === null) {
+        diffLine.innerHTML = '<span class="wk-label">Δ5:</span><span class="wk-none">–</span>';
+      } else {
+        const todaySum = (ex.sets || []).reduce((a, v) => a + (parseInt(v) || 0), 0);
+        const diff = Math.round(todaySum - avg5);
+        const sign = diff > 0 ? '+' : '';
+        const cls = diff > 0 ? 'wk-diff-pos' : (diff < 0 ? 'wk-diff-neg' : 'wk-diff-zero');
+        diffLine.innerHTML = '<span class="wk-label">Δ5:</span><span class="' + cls + '">' + sign + diff + '</span>';
+      }
+      c.appendChild(diffLine);
+    }
   } else {
     // No exercise selected — show empty history placeholders
     ['-2:', '-1:'].forEach(lbl => {
