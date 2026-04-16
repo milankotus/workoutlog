@@ -1593,14 +1593,15 @@ function cell(d, dd, ei) {
     }
     c.appendChild(nowLine);
 
-    // Δ5: today's set-sum vs avg of last 5 scheduled sessions (skipped excluded, no backfill)
-    if (!ex.skipped) {
+    // Δ5: today's set-sum vs avg of last 5 scheduled sessions (skipped excluded, no backfill).
+    // Hidden when the day has no sets filled yet (would otherwise always show -avg).
+    if (!ex.skipped && ex.sets && ex.sets.some(s => s)) {
       const avg5 = getRecent5Avg(dk(d), ex.name);
       const diffLine = document.createElement('div'); diffLine.className = 'wk-line';
       if (avg5 === null) {
         diffLine.innerHTML = '<span class="wk-label">Δ5:</span><span class="wk-none">–</span>';
       } else {
-        const todaySum = (ex.sets || []).reduce((a, v) => a + (parseInt(v) || 0), 0);
+        const todaySum = ex.sets.reduce((a, v) => a + (parseInt(v) || 0), 0);
         const diff = Math.round(todaySum - avg5);
         const sign = diff > 0 ? '+' : '';
         const cls = diff > 0 ? 'wk-diff-pos' : (diff < 0 ? 'wk-diff-neg' : 'wk-diff-zero');
