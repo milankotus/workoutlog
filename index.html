@@ -622,7 +622,11 @@
 
   /* === DESKTOP — bump fonts across the app (mobile keeps the dense default sizing) === */
   @media (min-width: 601px) {
-    .container { max-width: min(1800px, 96vw); }
+    .container { max-width: min(2200px, 98vw); }
+    /* Keep all exercises for a day on one horizontal row instead of wrapping;
+       horizontal scroll kicks in only if they don't all fit. */
+    .exercises-row { flex-wrap: nowrap; overflow-x: auto; }
+    .exercise-cell { flex: 1 1 140px; min-width: 140px; }
 
     /* Header */
     .header h1 { font-size: 30px; }
