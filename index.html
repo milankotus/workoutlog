@@ -620,16 +620,98 @@
     color: var(--text3); font-size: 12px;
   }
 
-  /* === DESKTOP — bump exercise cell text (mobile keeps the dense 9-11px sizing) === */
+  /* === DESKTOP — bump fonts across the app (mobile keeps the dense default sizing) === */
   @media (min-width: 601px) {
     .container { max-width: min(1800px, 96vw); }
-    .exercise-cell { padding: 10px; }
-    .exercise-cell select { font-size: 18px; padding: 8px 10px; margin-bottom: 6px; }
-    .wk-line { font-size: 18px; line-height: 1.5; gap: 6px; }
-    .wk-label { font-size: 18px; width: 56px; }
-    .sets-row { gap: 6px; margin-top: 7px; }
-    .sets-row input { font-size: 23px; padding: 8px 4px; }
-    .sets-row input::placeholder { font-size: 17px; }
+
+    /* Header */
+    .header h1 { font-size: 30px; }
+    .header .sub { font-size: 14px; }
+    .header a { font-size: 14px; }
+
+    /* Week nav */
+    .week-nav button { font-size: 16px; padding: 9px 16px; }
+    .week-nav .week-label { font-size: 19px; }
+
+    /* Day label */
+    .day-label-name { font-size: 15px; }
+    .day-label-date { font-size: 13px; }
+
+    /* Exercise cell — readable but not oversized */
+    .exercise-cell { padding: 9px; }
+    .exercise-cell select { font-size: 16px; padding: 7px 9px; margin-bottom: 5px; }
+    .wk-line { font-size: 16px; line-height: 1.5; gap: 5px; }
+    .wk-label { font-size: 16px; width: 50px; }
+    .sets-row { gap: 5px; margin-top: 6px; }
+    .sets-row input { font-size: 20px; padding: 7px 4px; }
+    .sets-row input::placeholder { font-size: 15px; }
+
+    /* Skip button + skipped label + mastery badges */
+    .skip-btn { font-size: 12px; padding: 3px 9px; }
+    .skipped-label { font-size: 14px; }
+    .mastery-badge { font-size: 13px; padding: 3px 8px; }
+    .mastery-0 { font-size: 12px; }
+    .mastery-1 { font-size: 12px; }
+    .mastery-2 { font-size: 13px; }
+    .mastery-3 { font-size: 14px; }
+
+    /* Cardio (weight/waist/etc.) row */
+    .cardio-icon { font-size: 14px; width: 20px; }
+    .cardio-row input { font-size: 14px; padding: 5px 5px; }
+    .cardio-row input::placeholder { font-size: 12px; }
+    .cardio-label { font-size: 11px; }
+    .cardio-unit { font-size: 12px; }
+    .cardio-avg { font-size: 12px; }
+    .cardio-delta { font-size: 12px; }
+
+    /* Calorie cell */
+    .calorie-cell { width: 210px; min-width: 210px; padding: 8px 10px; gap: 4px; }
+    .cal-summary-line { font-size: 15px; }
+    .cal-summary-line .cal-icon { font-size: 15px; width: 20px; }
+    .cal-summary-line .cal-unit { font-size: 13px; }
+    .cal-summary-line .cal-goal { font-size: 13px; }
+    .meal-add select { font-size: 14px; padding: 7px 10px; }
+
+    /* Footer */
+    .footer-btn { font-size: 14px; padding: 7px 14px; }
+    .storage-info { font-size: 13px; }
+
+    /* Manage panel */
+    .manage-box h3 { font-size: 19px; }
+    .manage-item { font-size: 16px; padding: 7px 10px; }
+    .manage-item input { font-size: 16px; }
+    .manage-item .archived-badge { font-size: 13px; }
+    .manage-item .mastery-cfg { font-size: 14px; }
+    .manage-item .mastery-cfg input { font-size: 14px; }
+    .manage-item .del-btn,
+    .manage-item .archive-btn { font-size: 16px; }
+    .archived-toggle { font-size: 14px; }
+    .archived-list .manage-item .restore-btn { font-size: 14px; }
+    .manage-add input[type="text"] { font-size: 16px; padding: 8px 12px; }
+    .manage-add label { font-size: 14px; }
+    .manage-add .add-btn { font-size: 16px; padding: 8px 16px; }
+    .manage-close { font-size: 16px; padding: 10px; }
+    .manage-hint { font-size: 13px; }
+
+    /* Meal modal */
+    .meal-box h3 { font-size: 19px; }
+    .meal-date { font-size: 13px; }
+    .meal-item { font-size: 15px; padding: 7px 10px; }
+    .meal-item .meal-kcal { font-size: 14px; }
+    .meal-item .meal-prot { font-size: 14px; }
+    .meal-item .meal-ratio { font-size: 14px; }
+    .meal-item .meal-del { font-size: 17px; }
+    .meal-add input { font-size: 15px; padding: 8px 10px; }
+    .meal-dropdown-item { font-size: 15px; padding: 9px 10px; }
+    .meal-add .meal-add-btn { font-size: 15px; padding: 8px 14px; }
+    .meal-total-line { font-size: 14px; }
+    .meal-total-line .goal-inp { font-size: 14px; width: 65px; }
+
+    /* Charts modal */
+    .charts-box h3 { font-size: 19px; }
+    .chart-range-btn { font-size: 14px; padding: 6px 14px; }
+    .chart-legend-item { font-size: 13px; }
+    .chart-no-data { font-size: 15px; }
   }
 
   /* === MOBILE RESPONSIVE === */
