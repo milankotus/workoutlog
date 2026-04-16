@@ -798,7 +798,6 @@
       <button class="footer-btn" onclick="exportJSON()">Export backup</button>
       <button class="footer-btn" onclick="document.getElementById('fileInput').click()">Import backup</button>
       <button class="footer-btn" onclick="exportCSV()">Export CSV</button>
-      <button class="footer-btn danger" onclick="clearAllData()">Delete all</button>
     </div>
   </div>
 
@@ -2722,13 +2721,6 @@ function importJSON(e) {
   };
   r.readAsText(file);
   e.target.value = '';  // Reset so same file can be re-imported
-}
-
-/** Delete all data (double confirmation) */
-function clearAllData() {
-  if (confirm('Delete ALL data?') && confirm('Are you sure? Export a backup first.')) {
-    state = defaultState(); save(); render();
-  }
 }
 
 // ============================================================================
