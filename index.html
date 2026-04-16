@@ -622,11 +622,13 @@
 
   /* === DESKTOP — bump exercise cell text (mobile keeps the dense 9-11px sizing) === */
   @media (min-width: 601px) {
-    .exercise-cell select { font-size: 13px; padding: 5px 7px; }
-    .wk-line { font-size: 12px; line-height: 1.5; }
-    .wk-label { font-size: 12px; width: 36px; }
-    .sets-row input { font-size: 15px; padding: 5px 3px; }
-    .sets-row input::placeholder { font-size: 12px; }
+    .exercise-cell { padding: 9px; }
+    .exercise-cell select { font-size: 16px; padding: 7px 9px; margin-bottom: 5px; }
+    .wk-line { font-size: 16px; line-height: 1.5; gap: 5px; }
+    .wk-label { font-size: 16px; width: 50px; }
+    .sets-row { gap: 5px; margin-top: 6px; }
+    .sets-row input { font-size: 20px; padding: 7px 4px; }
+    .sets-row input::placeholder { font-size: 15px; }
   }
 
   /* === MOBILE RESPONSIVE === */
