@@ -1021,6 +1021,10 @@ function migrate() {
   if (!state.goals) state.goals = { calories: 0, protein: 0 };
   if (state.goals.calorieBonus === undefined) state.goals.calorieBonus = 0;
   if (state.goals.calorieBonusEnabled === undefined) state.goals.calorieBonusEnabled = false;
+  // Stamp per-day goals on all existing days that don't have them yet (one-time migration)
+  Object.values(state.days || {}).forEach(d => {
+    if (!d.goals) d.goals = JSON.parse(JSON.stringify(state.goals));
+  });
   // Ensure hiddenMeals array exists (meals hidden from autocomplete suggestions)
   if (!state.hiddenMeals) state.hiddenMeals = [];
   // Ensure customActivities array exists (user-defined activity types)
@@ -1151,13 +1155,31 @@ function normalizeSets(data, name) {
   return data;
 }
 
-/** Returns effective calorie goal: base + bonus if bonus is enabled. */
-function getEffectiveCalorieGoal() {
-  const base = state.goals && state.goals.calories || 0;
-  if (base > 0 && state.goals.calorieBonusEnabled && state.goals.calorieBonus > 0) {
-    return base + state.goals.calorieBonus;
+/** Returns goals for a specific day — uses per-day snapshot if available, else global state.goals. */
+function getDayGoals(dateKey) {
+  const day = state.days[dateKey];
+  if (day && day.goals) return day.goals;
+  return state.goals;
+}
+
+/** Returns effective calorie goal (base + bonus if enabled) for a specific day, or global if no dateKey. */
+function getEffectiveCalorieGoal(dateKey) {
+  const g = dateKey ? getDayGoals(dateKey) : state.goals;
+  const base = g.calories || 0;
+  if (base > 0 && g.calorieBonusEnabled && g.calorieBonus > 0) {
+    return base + g.calorieBonus;
   }
   return base;
+}
+
+/** When goals change, update state.goals (the template) and stamp today + all future existing days. */
+function applyGoalsChange() {
+  const todayKey = dk(today);
+  Object.keys(state.days).forEach(k => {
+    if (k >= todayKey) {
+      state.days[k].goals = JSON.parse(JSON.stringify(state.goals));
+    }
+  });
 }
 
 /** Returns HSL color from red (0%) through yellow to green (100%) based on goal fulfillment. */
@@ -1239,8 +1261,9 @@ function fmt(d) {
  */
 function ensureDay(d) {
   const k = dk(d);
-  if (!state.days[k]) state.days[k] = { exercises: [] };
+  if (!state.days[k]) state.days[k] = { exercises: [], goals: JSON.parse(JSON.stringify(state.goals)) };
   const dd = state.days[k];
+  if (!dd.goals) dd.goals = JSON.parse(JSON.stringify(state.goals));
   const dow = d.getDay();
   // Use custom plan only for today and future dates; past dates use hardcoded PLAN
   const useCustom = state.plan && state.plan[dow] && k >= dk(today);
@@ -1479,7 +1502,8 @@ function render() {
 
     // Day data setup
     const cardioKey = dk(d);
-    if (!state.days[cardioKey]) state.days[cardioKey] = { exercises: [] };
+    if (!state.days[cardioKey]) state.days[cardioKey] = { exercises: [], goals: JSON.parse(JSON.stringify(state.goals)) };
+    if (!state.days[cardioKey].goals) state.days[cardioKey].goals = JSON.parse(JSON.stringify(state.goals));
     const dayData = state.days[cardioKey];
 
     // Calorie & tracking cell
@@ -1534,8 +1558,8 @@ function render() {
     const eaten = calcDayEaten(cardioKey);
     const protEaten = calcDayProtein(cardioKey);
 
-    const calGoal = getEffectiveCalorieGoal();
-    const protGoal = state.goals && state.goals.protein || 0;
+    const calGoal = getEffectiveCalorieGoal(cardioKey);
+    const protGoal = getDayGoals(cardioKey).protein || 0;
 
     const eatLine = document.createElement('div'); eatLine.className = 'cal-summary-line clickable';
     let eatHtml = '<span class="cal-icon">\u{1F37D}\u{FE0F}</span><span class="cal-val">' + Math.round(eaten) + '</span>';
@@ -2095,8 +2119,9 @@ function closeMeals() {
  */
 function renderMeals() {
   if (!mealModalDate) return;
-  if (!state.days[mealModalDate]) state.days[mealModalDate] = { exercises: [] };
+  if (!state.days[mealModalDate]) state.days[mealModalDate] = { exercises: [], goals: JSON.parse(JSON.stringify(state.goals)) };
   const day = state.days[mealModalDate];
+  if (!day.goals) day.goals = JSON.parse(JSON.stringify(state.goals));
   if (!day.meals) day.meals = [];
 
   // Date header
@@ -2149,8 +2174,8 @@ function renderMeals() {
     const mProt = parseFloat(meal.protein) || 0;
     const mRatio = mKcal > 0 ? mProt / mKcal * 100 : 0;
     ratio.textContent = mKcal > 0 ? mRatio.toFixed(1) + 'g/100' : '—';
-    const calG = getEffectiveCalorieGoal();
-    const proG = state.goals && state.goals.protein || 0;
+    const calG = getEffectiveCalorieGoal(mealModalDate);
+    const proG = getDayGoals(mealModalDate).protein || 0;
     const baseRatio = calG > 0 && proG > 0 ? proG / calG * 100 : 0;
     const rCol = mKcal > 0 ? ratioColor(mRatio, baseRatio) : null;
     if (rCol) ratio.style.color = rCol;
@@ -2172,6 +2197,9 @@ function renderMeals() {
   totalLine.innerHTML = '<span class="label">Total eaten</span><span class="value">' + fmtNum(eaten) + ' kCal · ' + fmtNum(protTotal) + 'g protein</span>';
   totals.appendChild(totalLine);
 
+  // Per-day goals for display
+  const dayG = getDayGoals(mealModalDate);
+
   // Calorie goal
   const calGoalLine = document.createElement('div'); calGoalLine.className = 'meal-total-line';
   const calGoalLabel = document.createElement('span'); calGoalLabel.className = 'label'; calGoalLabel.textContent = 'Calorie goal';
@@ -2180,10 +2208,10 @@ function renderMeals() {
   calGoalInp.type = 'text'; calGoalInp.inputMode = 'decimal'; calGoalInp.placeholder = '—';
   calGoalInp.value = state.goals.calories || '';
   calGoalInp.oninput = () => { calGoalInp.value = normalizeNum(calGoalInp.value); };
-  calGoalInp.onchange = () => { state.goals.calories = parseInt(calGoalInp.value) || 0; save(); renderMeals(); render(); };
+  calGoalInp.onchange = () => { state.goals.calories = parseInt(calGoalInp.value) || 0; applyGoalsChange(); save(); renderMeals(); render(); };
   const calGoalUnit = document.createTextNode(' kCal');
   calGoalVal.appendChild(calGoalInp); calGoalVal.appendChild(calGoalUnit);
-  const effectiveCal = getEffectiveCalorieGoal();
+  const effectiveCal = getEffectiveCalorieGoal(mealModalDate);
   if (effectiveCal > 0) {
     const remaining = effectiveCal - eaten;
     const remSpan = document.createElement('span');
@@ -2200,7 +2228,7 @@ function renderMeals() {
   const bonusCb = document.createElement('input'); bonusCb.type = 'checkbox';
   bonusCb.checked = !!state.goals.calorieBonusEnabled;
   bonusCb.style.cssText = 'margin-right:6px;vertical-align:middle;cursor:pointer';
-  bonusCb.onchange = () => { state.goals.calorieBonusEnabled = bonusCb.checked; save(); renderMeals(); render(); };
+  bonusCb.onchange = () => { state.goals.calorieBonusEnabled = bonusCb.checked; applyGoalsChange(); save(); renderMeals(); render(); };
   bonusLabel.appendChild(bonusCb);
   bonusLabel.appendChild(document.createTextNode('Bonus'));
   const bonusVal = document.createElement('span'); bonusVal.className = 'value';
@@ -2208,10 +2236,10 @@ function renderMeals() {
   bonusInp.type = 'text'; bonusInp.inputMode = 'decimal'; bonusInp.placeholder = '—';
   bonusInp.value = state.goals.calorieBonus || '';
   bonusInp.oninput = () => { bonusInp.value = normalizeNum(bonusInp.value); };
-  bonusInp.onchange = () => { state.goals.calorieBonus = parseInt(bonusInp.value) || 0; save(); renderMeals(); render(); };
+  bonusInp.onchange = () => { state.goals.calorieBonus = parseInt(bonusInp.value) || 0; applyGoalsChange(); save(); renderMeals(); render(); };
   const bonusUnit = document.createTextNode(' kCal');
   bonusVal.appendChild(bonusInp); bonusVal.appendChild(bonusUnit);
-  if (state.goals.calorieBonusEnabled && effectiveCal > 0 && state.goals.calories > 0) {
+  if (state.goals.calorieBonusEnabled && effectiveCal > 0 && dayG.calories > 0) {
     const effSpan = document.createElement('span');
     effSpan.style.cssText = 'margin-left:8px;color:var(--text3);font-size:11px';
     effSpan.textContent = '(total: ' + effectiveCal + ')';
@@ -2228,11 +2256,11 @@ function renderMeals() {
   protGoalInp.type = 'text'; protGoalInp.inputMode = 'decimal'; protGoalInp.placeholder = '—';
   protGoalInp.value = state.goals.protein || '';
   protGoalInp.oninput = () => { protGoalInp.value = normalizeNum(protGoalInp.value); };
-  protGoalInp.onchange = () => { state.goals.protein = parseInt(protGoalInp.value) || 0; save(); renderMeals(); render(); };
+  protGoalInp.onchange = () => { state.goals.protein = parseInt(protGoalInp.value) || 0; applyGoalsChange(); save(); renderMeals(); render(); };
   const protGoalUnit = document.createTextNode(' g');
   protGoalVal.appendChild(protGoalInp); protGoalVal.appendChild(protGoalUnit);
-  if (state.goals.protein > 0) {
-    const remaining = state.goals.protein - protTotal;
+  if (dayG.protein > 0) {
+    const remaining = dayG.protein - protTotal;
     const remSpan = document.createElement('span');
     remSpan.style.cssText = 'margin-left:8px;color:' + (remaining >= 0 ? 'var(--red)' : 'var(--green)');
     remSpan.textContent = (remaining >= 0 ? fmtNum(remaining) + 'g left' : fmtNum(Math.abs(remaining)) + 'g over');
@@ -2242,8 +2270,8 @@ function renderMeals() {
   totals.appendChild(protGoalLine);
 
   // Base ratio line (only shown when both goals are set)
-  const cg = getEffectiveCalorieGoal();
-  const pg = state.goals.protein || 0;
+  const cg = getEffectiveCalorieGoal(mealModalDate);
+  const pg = dayG.protein || 0;
   if (cg > 0 && pg > 0) {
     const brLine = document.createElement('div'); brLine.className = 'meal-total-line';
     const brLabel = document.createElement('span'); brLabel.className = 'label'; brLabel.textContent = 'Base ratio';
