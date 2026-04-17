@@ -2290,18 +2290,38 @@ function renderMeals() {
   }
 }
 
-/** Build map of all unique historical meals (excluding hidden ones). */
+/** Build map of all unique historical meals (excluding hidden and stale ones).
+    Staleness rule: a meal is hidden when days-since-last-eaten > min(count * 30, 90).
+    Frequent meals linger longer than one-offs, but nothing survives past 90 idle days. */
 function getMealMap() {
   const hidden = new Set((state.hiddenMeals || []).map(n => n.toLowerCase()));
-  const map = {};  // name (lowercase) → { name (original case), kcal, protein, count }
-  for (const day of Object.values(state.days)) {
+  const map = {};  // name (lowercase) → { name, kcal, protein, count, lastDate }
+  for (const [dateKey, day] of Object.entries(state.days)) {
     if (!day.meals) continue;
     for (const m of day.meals) {
       const key = m.name.toLowerCase();
       if (hidden.has(key)) continue;
-      if (map[key]) { map[key].count++; map[key].kcal = m.kcal; map[key].protein = m.protein || 0; }
-      else map[key] = { name: m.name, kcal: m.kcal, protein: m.protein || 0, count: 1 };
+      if (map[key]) {
+        map[key].count++;
+        // Keep kcal/protein from the most recent occurrence (date keys sort lexicographically)
+        if (dateKey > map[key].lastDate) {
+          map[key].kcal = m.kcal;
+          map[key].protein = m.protein || 0;
+          map[key].lastDate = dateKey;
+        }
+      } else {
+        map[key] = { name: m.name, kcal: m.kcal, protein: m.protein || 0, count: 1, lastDate: dateKey };
+      }
     }
+  }
+  // Apply staleness filter
+  const todayKey = dk(today);
+  for (const key of Object.keys(map)) {
+    const e = map[key];
+    if (e.lastDate >= todayKey) continue;  // today or future → always fresh
+    const lp = e.lastDate.split('-').map(Number);
+    const daysSince = Math.round((today - new Date(lp[0], lp[1] - 1, lp[2])) / 86400000);
+    if (daysSince > Math.min(e.count * 30, 90)) delete map[key];
   }
   return map;
 }
