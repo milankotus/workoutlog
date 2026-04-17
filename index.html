@@ -1172,23 +1172,25 @@ function getEffectiveCalorieGoal(dateKey) {
   return base;
 }
 
-/** When goals change, update state.goals (the template) and stamp today + all future existing days. */
+/** When goals change, update state.goals (the template) and stamp today + all future existing days.
+    Bonus enabled status is NOT propagated — future days always start with bonus off. */
 function applyGoalsChange() {
   const todayKey = dk(today);
   Object.keys(state.days).forEach(k => {
     if (k >= todayKey) {
       state.days[k].goals = JSON.parse(JSON.stringify(state.goals));
+      if (k > todayKey) state.days[k].goals.calorieBonusEnabled = false;
     }
   });
 }
 
-/** Returns HSL gradient color based on goal fulfillment.
-    Normal (protein): red at 0% → green at 100% (more = good).
-    Inverted (calories): green at 0% → red at 100% (less = good). */
+/** Returns red or green based on goal fulfillment.
+    Normal (protein): red when under, green when met.
+    Inverted (calories): green when under, red when met/over. */
 function goalColor(current, goal, invert) {
-  const ratio = Math.min(current / goal, 1);
-  const hue = invert ? Math.round((1 - ratio) * 120) : Math.round(ratio * 120);
-  return 'hsl(' + hue + ',70%,50%)';
+  const met = current >= goal;
+  if (invert) return met ? 'var(--red)' : 'var(--green)';
+  return met ? 'var(--green)' : 'var(--red)';
 }
 
 /** Color-code a meal's protein/100kCal ratio relative to the base ratio (goal protein / goal calories * 100).
@@ -1263,9 +1265,13 @@ function fmt(d) {
  */
 function ensureDay(d) {
   const k = dk(d);
-  if (!state.days[k]) state.days[k] = { exercises: [], goals: JSON.parse(JSON.stringify(state.goals)) };
+  if (!state.days[k]) {
+    const g = JSON.parse(JSON.stringify(state.goals));
+    g.calorieBonusEnabled = false;
+    state.days[k] = { exercises: [], goals: g };
+  }
   const dd = state.days[k];
-  if (!dd.goals) dd.goals = JSON.parse(JSON.stringify(state.goals));
+  if (!dd.goals) { dd.goals = JSON.parse(JSON.stringify(state.goals)); dd.goals.calorieBonusEnabled = false; }
   const dow = d.getDay();
   // Use custom plan only for today and future dates; past dates use hardcoded PLAN
   const useCustom = state.plan && state.plan[dow] && k >= dk(today);
@@ -1504,8 +1510,8 @@ function render() {
 
     // Day data setup
     const cardioKey = dk(d);
-    if (!state.days[cardioKey]) state.days[cardioKey] = { exercises: [], goals: JSON.parse(JSON.stringify(state.goals)) };
-    if (!state.days[cardioKey].goals) state.days[cardioKey].goals = JSON.parse(JSON.stringify(state.goals));
+    if (!state.days[cardioKey]) { const g = JSON.parse(JSON.stringify(state.goals)); g.calorieBonusEnabled = false; state.days[cardioKey] = { exercises: [], goals: g }; }
+    if (!state.days[cardioKey].goals) { state.days[cardioKey].goals = JSON.parse(JSON.stringify(state.goals)); state.days[cardioKey].goals.calorieBonusEnabled = false; }
     const dayData = state.days[cardioKey];
 
     // Calorie & tracking cell
@@ -2121,9 +2127,9 @@ function closeMeals() {
  */
 function renderMeals() {
   if (!mealModalDate) return;
-  if (!state.days[mealModalDate]) state.days[mealModalDate] = { exercises: [], goals: JSON.parse(JSON.stringify(state.goals)) };
+  if (!state.days[mealModalDate]) { const g = JSON.parse(JSON.stringify(state.goals)); g.calorieBonusEnabled = false; state.days[mealModalDate] = { exercises: [], goals: g }; }
   const day = state.days[mealModalDate];
-  if (!day.goals) day.goals = JSON.parse(JSON.stringify(state.goals));
+  if (!day.goals) { day.goals = JSON.parse(JSON.stringify(state.goals)); day.goals.calorieBonusEnabled = false; }
   if (!day.meals) day.meals = [];
 
   // Date header
