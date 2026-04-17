@@ -1019,6 +1019,8 @@ function migrate() {
   });
   // Ensure goals object exists
   if (!state.goals) state.goals = { calories: 0, protein: 0 };
+  if (state.goals.calorieBonus === undefined) state.goals.calorieBonus = 0;
+  if (state.goals.calorieBonusEnabled === undefined) state.goals.calorieBonusEnabled = false;
   // Ensure hiddenMeals array exists (meals hidden from autocomplete suggestions)
   if (!state.hiddenMeals) state.hiddenMeals = [];
   // Ensure customActivities array exists (user-defined activity types)
@@ -1147,6 +1149,15 @@ function normalizeSets(data, name) {
   while (data.length < n) data.push('');
   if (data.length > n) data = data.slice(0, n);
   return data;
+}
+
+/** Returns effective calorie goal: base + bonus if bonus is enabled. */
+function getEffectiveCalorieGoal() {
+  const base = state.goals && state.goals.calories || 0;
+  if (base > 0 && state.goals.calorieBonusEnabled && state.goals.calorieBonus > 0) {
+    return base + state.goals.calorieBonus;
+  }
+  return base;
 }
 
 /** Returns HSL color from red (0%) through yellow to green (100%) based on goal fulfillment. */
@@ -1523,7 +1534,7 @@ function render() {
     const eaten = calcDayEaten(cardioKey);
     const protEaten = calcDayProtein(cardioKey);
 
-    const calGoal = state.goals && state.goals.calories || 0;
+    const calGoal = getEffectiveCalorieGoal();
     const protGoal = state.goals && state.goals.protein || 0;
 
     const eatLine = document.createElement('div'); eatLine.className = 'cal-summary-line clickable';
@@ -2138,7 +2149,7 @@ function renderMeals() {
     const mProt = parseFloat(meal.protein) || 0;
     const mRatio = mKcal > 0 ? mProt / mKcal * 100 : 0;
     ratio.textContent = mKcal > 0 ? mRatio.toFixed(1) + 'g/100' : '—';
-    const calG = state.goals && state.goals.calories || 0;
+    const calG = getEffectiveCalorieGoal();
     const proG = state.goals && state.goals.protein || 0;
     const baseRatio = calG > 0 && proG > 0 ? proG / calG * 100 : 0;
     const rCol = mKcal > 0 ? ratioColor(mRatio, baseRatio) : null;
@@ -2172,8 +2183,9 @@ function renderMeals() {
   calGoalInp.onchange = () => { state.goals.calories = parseInt(calGoalInp.value) || 0; save(); renderMeals(); render(); };
   const calGoalUnit = document.createTextNode(' kCal');
   calGoalVal.appendChild(calGoalInp); calGoalVal.appendChild(calGoalUnit);
-  if (state.goals.calories > 0) {
-    const remaining = state.goals.calories - eaten;
+  const effectiveCal = getEffectiveCalorieGoal();
+  if (effectiveCal > 0) {
+    const remaining = effectiveCal - eaten;
     const remSpan = document.createElement('span');
     remSpan.style.cssText = 'margin-left:8px;color:' + (remaining >= 0 ? 'var(--green)' : 'var(--red)');
     remSpan.textContent = (remaining >= 0 ? fmtNum(remaining) + ' left' : fmtNum(Math.abs(remaining)) + ' over');
@@ -2181,6 +2193,32 @@ function renderMeals() {
   }
   calGoalLine.appendChild(calGoalLabel); calGoalLine.appendChild(calGoalVal);
   totals.appendChild(calGoalLine);
+
+  // Calorie bonus
+  const bonusLine = document.createElement('div'); bonusLine.className = 'meal-total-line';
+  const bonusLabel = document.createElement('span'); bonusLabel.className = 'label';
+  const bonusCb = document.createElement('input'); bonusCb.type = 'checkbox';
+  bonusCb.checked = !!state.goals.calorieBonusEnabled;
+  bonusCb.style.cssText = 'margin-right:6px;vertical-align:middle;cursor:pointer';
+  bonusCb.onchange = () => { state.goals.calorieBonusEnabled = bonusCb.checked; save(); renderMeals(); render(); };
+  bonusLabel.appendChild(bonusCb);
+  bonusLabel.appendChild(document.createTextNode('Bonus'));
+  const bonusVal = document.createElement('span'); bonusVal.className = 'value';
+  const bonusInp = document.createElement('input'); bonusInp.className = 'goal-inp';
+  bonusInp.type = 'text'; bonusInp.inputMode = 'decimal'; bonusInp.placeholder = '—';
+  bonusInp.value = state.goals.calorieBonus || '';
+  bonusInp.oninput = () => { bonusInp.value = normalizeNum(bonusInp.value); };
+  bonusInp.onchange = () => { state.goals.calorieBonus = parseInt(bonusInp.value) || 0; save(); renderMeals(); render(); };
+  const bonusUnit = document.createTextNode(' kCal');
+  bonusVal.appendChild(bonusInp); bonusVal.appendChild(bonusUnit);
+  if (state.goals.calorieBonusEnabled && effectiveCal > 0 && state.goals.calories > 0) {
+    const effSpan = document.createElement('span');
+    effSpan.style.cssText = 'margin-left:8px;color:var(--text3);font-size:11px';
+    effSpan.textContent = '(total: ' + effectiveCal + ')';
+    bonusVal.appendChild(effSpan);
+  }
+  bonusLine.appendChild(bonusLabel); bonusLine.appendChild(bonusVal);
+  totals.appendChild(bonusLine);
 
   // Protein goal
   const protGoalLine = document.createElement('div'); protGoalLine.className = 'meal-total-line';
@@ -2204,7 +2242,7 @@ function renderMeals() {
   totals.appendChild(protGoalLine);
 
   // Base ratio line (only shown when both goals are set)
-  const cg = state.goals.calories || 0;
+  const cg = getEffectiveCalorieGoal();
   const pg = state.goals.protein || 0;
   if (cg > 0 && pg > 0) {
     const brLine = document.createElement('div'); brLine.className = 'meal-total-line';
@@ -2340,7 +2378,7 @@ function renderSavedMeals() {
     const eRatioSpan = document.createElement('span');
     eRatioSpan.textContent = entry.kcal > 0 ? eRatioVal.toFixed(1) + 'g/100' : '—';
     eRatioSpan.style.fontWeight = '600';
-    const smCalG = state.goals && state.goals.calories || 0;
+    const smCalG = getEffectiveCalorieGoal();
     const smProG = state.goals && state.goals.protein || 0;
     const smBase = smCalG > 0 && smProG > 0 ? smProG / smCalG * 100 : 0;
     const smCol = entry.kcal > 0 ? ratioColor(eRatioVal, smBase) : null;
