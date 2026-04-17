@@ -1182,10 +1182,12 @@ function applyGoalsChange() {
   });
 }
 
-/** Returns HSL color from red (0%) through yellow to green (100%) based on goal fulfillment. */
-function goalColor(current, goal) {
+/** Returns HSL gradient color based on goal fulfillment.
+    Normal (protein): red at 0% → green at 100% (more = good).
+    Inverted (calories): green at 0% → red at 100% (less = good). */
+function goalColor(current, goal, invert) {
   const ratio = Math.min(current / goal, 1);
-  const hue = Math.round(ratio * 120);  // 0=red, 60=yellow, 120=green
+  const hue = invert ? Math.round((1 - ratio) * 120) : Math.round(ratio * 120);
   return 'hsl(' + hue + ',70%,50%)';
 }
 
@@ -1564,7 +1566,7 @@ function render() {
     const eatLine = document.createElement('div'); eatLine.className = 'cal-summary-line clickable';
     let eatHtml = '<span class="cal-icon">\u{1F37D}\u{FE0F}</span><span class="cal-val">' + Math.round(eaten) + '</span>';
     if (calGoal > 0) {
-      eatHtml += '<span class="cal-goal" style="color:' + goalColor(eaten, calGoal) + '">/ ' + calGoal + ' kCal</span>';
+      eatHtml += '<span class="cal-goal" style="color:' + goalColor(eaten, calGoal, true) + '">/ ' + calGoal + ' kCal</span>';
     } else {
       eatHtml += '<span class="cal-unit">kCal</span>';
     }
@@ -2215,7 +2217,7 @@ function renderMeals() {
   if (effectiveCal > 0) {
     const remaining = effectiveCal - eaten;
     const remSpan = document.createElement('span');
-    remSpan.style.cssText = 'margin-left:8px;color:' + (remaining >= 0 ? 'var(--green)' : 'var(--red)');
+    remSpan.style.cssText = 'margin-left:8px;color:' + goalColor(eaten, effectiveCal, true);
     remSpan.textContent = (remaining >= 0 ? fmtNum(remaining) + ' left' : fmtNum(Math.abs(remaining)) + ' over');
     calGoalVal.appendChild(remSpan);
   }
@@ -2262,7 +2264,7 @@ function renderMeals() {
   if (dayG.protein > 0) {
     const remaining = dayG.protein - protTotal;
     const remSpan = document.createElement('span');
-    remSpan.style.cssText = 'margin-left:8px;color:' + (remaining >= 0 ? 'var(--red)' : 'var(--green)');
+    remSpan.style.cssText = 'margin-left:8px;color:' + goalColor(protTotal, dayG.protein);
     remSpan.textContent = (remaining >= 0 ? fmtNum(remaining) + 'g left' : fmtNum(Math.abs(remaining)) + 'g over');
     protGoalVal.appendChild(remSpan);
   }
