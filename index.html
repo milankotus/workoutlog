@@ -10,7 +10,7 @@
 
 <!--
   ============================================================================
-  WORKOUT LOG — Single-file calisthenics & nutrition tracker
+  WORKOUT LOG — Single-file calisthenics tracker
   ============================================================================
 
   IMPORTANT: All code changes MUST be commented. Every function, significant block,
@@ -19,8 +19,7 @@
 
   OVERVIEW:
     Local HTML file opened directly in browser (file:// protocol).
-    Tracks daily exercises (sets/reps), cardio activities, meals (calories eaten),
-    and body measurements.
+    Tracks daily exercises (sets/reps) plus body measurements (weight, waist).
     Based on Hybrid Calisthenics (https://www.hybridcalisthenics.com/programs).
 
   STORAGE:
@@ -39,11 +38,6 @@
           archived: false                 // Hidden from dropdowns but preserved in history
         }, ...
       ],
-      goals: { calories: 2200, protein: 150 },  // Daily calorie/protein targets (0 = no goal)
-      hiddenMeals: ["old meal"],          // Meal names hidden from autocomplete suggestions
-      customActivities: [                 // User-defined activity types (beyond built-in 4)
-        { id: "custom_swimming", name: "Swimming", icon: "🏊", fields: ["km", "min"] }
-      ],
       plan: {                             // Custom weekly plan (overrides PLAN constant)
         1: ["Pullups", "Dips"],           // Day-of-week (0=Sun..6=Sat) → exercise names
       },
@@ -56,16 +50,7 @@
             }, ...
           ],
           weight: "85",                   // Body weight in kg
-          waist: "88",                    // Waist circumference in cm (body tracking)
-          meals: [                        // Meals eaten that day (calories + protein)
-            { name: "Chicken rice", kcal: 650, protein: 45 }
-          ],
-          activities: [                   // Cardio/activities that day (built-in + custom types)
-            { type: "running", km: "6.16", min: "45", elev: "120" },
-            { type: "rucking", km: "3", min: "30", kg: "20" },
-            { type: "walking", km: "5", min: "60" },
-            { type: "bicycling", km: "15", min: "40", elev: "250" }
-          ]
+          waist: "88"                     // Waist circumference in cm (body tracking)
         }, ...
       }
     }
@@ -87,10 +72,8 @@
       [Day Label] [Tracking Cell] [Exercise Cell 1] [Exercise Cell 2] ... [+/−]
 
     Tracking cell contains (per day):
-      - Weight input (kg)
-      - Waist input (cm) — body measurement tracking
-      - Activities count (clickable → Activities modal)
-      - Calories eaten (clickable → Meals modal)
+      - Weight input (kg) with 7-day average + week-over-week delta
+      - Waist input (cm) with 7-day average + week-over-week delta
 
     Each exercise cell contains:
       - Dropdown (select from master exercise list)
@@ -104,19 +87,9 @@
     Week navigation via ← Previous / Next → / Today buttons.
 
   MODALS:
-    Meals modal     — Click calories. Add/edit/remove meals (name + kCal + protein).
-                       Custom dropdown suggests top 15 most frequent meals.
-                       Selecting a suggestion auto-fills kCal + protein.
-                       Uses the most recent historical entry for that meal name.
-                       "Manage saved meals" link lets user hide unwanted suggestions.
-    Activities modal — Click activities count. Add/remove activities with type-specific fields.
-                       Built-in types: Running, Walking, Rucking, Bicycling.
-                       "Manage activity types" lets user define custom types with chosen fields.
     Manage modal    — Footer button. Add/remove/rename/archive exercises, configure sets, toggle rings.
                        Click exercise name to rename inline — propagates to all history,
                        current week, and weekly plan template.
-    Charts modal    — Footer button. Multi-series line chart (weight, waist, calories, protein).
-                       Time range selector: 30d / 90d / 6mo / 1yr / all.
 
   KEY FUNCTIONS:
     render()               — Rebuilds the entire week grid.
@@ -127,21 +100,13 @@
     renameExercise()       — Renames exercise everywhere (master list, all days, plan).
     fmtSets()              — Formats sets array with total reps sum when all filled.
     getMasteryStreak()     — Counts consecutive goal-meeting sessions for mastery badge.
-    getAllActivityTypes()  — Merges built-in + custom activity types.
-    toggleActFields()      — Shows/hides activity input fields per selected type.
-    calcDayEaten()         — Sum of meal calories for a day.
-    calcDayProtein()       — Sum of meal protein for a day.
-    filterMealSuggestions()— Shows filtered meal dropdown below the name input.
-    autofillMealKcal()     — Auto-fills kCal + protein from most recent historical match.
-    toggleSavedMeals()     — Shows/hides saved meals list with option to hide entries.
-    migrate()              — Data migration (exercise renames, old field conversions).
+    migrate()              — Data migration (exercise renames, strip retired nutrition/activity fields).
     cloudSave() / cloudLoad() — Debounced cloud sync via Cloudflare Worker.
-    renderCharts()         — Builds multi-series chart in Charts modal.
 
   EXPORT/IMPORT:
     - Export backup: Downloads complete state as JSON
     - Import backup: Loads JSON file, replaces all data
-    - Export CSV: Semicolon-separated; exercises, activities, weight, waist, meals
+    - Export CSV: Semicolon-separated; exercises, weight, waist
 
   ============================================================================
 -->
@@ -471,154 +436,16 @@
   /* Week-over-week delta: avg(last 7d) − avg(prior 7d). Neutral color — up/down not judged good/bad. */
   .cardio-delta { font-size: 9px; color: var(--text2); flex-shrink: 0; font-family: 'JetBrains Mono', monospace; margin-left: 2px; }
 
-  /* === CALORIE CELL — weight, eaten summary, meals button === */
-  .calorie-cell {
+  /* === TRACKING CELL — holds weight + waist rows for a day === */
+  .tracking-cell {
     width: 170px; min-width: 170px; background: var(--bg2); border: 1px solid var(--border);
     border-radius: var(--radius); padding: 6px 8px; display: flex;
     flex-direction: column; justify-content: center; gap: 3px; flex-shrink: 0;
   }
-  .calorie-cell:hover { border-color: var(--bg4); }
-  .cal-summary-line {
-    display: flex; align-items: center; gap: 3px;
-    font-family: 'JetBrains Mono', monospace; font-size: 12px; line-height: 1.3;
-  }
-  .cal-summary-line .cal-icon { font-size: 12px; width: 16px; text-align: center; flex-shrink: 0; }
-  .cal-summary-line .cal-val { color: var(--text); font-weight: 600; }
-  .cal-summary-line .cal-unit { font-size: 10px; color: var(--text3); }
-  .cal-summary-line .cal-goal { font-size: 10px; font-weight: 400; }
-  .cal-summary-line.clickable { cursor: pointer; border-radius: 3px; padding: 1px 2px; margin: 0 -2px; transition: background .15s; }
-  .cal-summary-line.clickable:hover { background: var(--bg3); }
-
-  .meal-add select {
-    font-family: inherit; font-size: 12px; padding: 6px 8px;
-    background: var(--bg3); border: 1px solid var(--border); color: var(--text);
-    border-radius: var(--radius-sm); outline: none; cursor: pointer;
-  }
-  .meal-add select:focus { border-color: var(--accent); }
-
-  /* === MEAL LOG MODAL === */
-  .meal-overlay {
-    display: none; position: fixed; inset: 0; background: rgba(0,0,0,.6);
-    z-index: 100; align-items: center; justify-content: center;
-  }
-  .meal-overlay.open { display: flex; }
-  .meal-box {
-    background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius);
-    padding: 20px; width: 420px; max-width: 95vw; max-height: 80vh; overflow-y: auto;
-  }
-  .meal-box h3 { font-size: 15px; font-weight: 600; color: var(--accent2); margin-bottom: 4px; }
-  .meal-date { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text3); margin-bottom: 12px; }
-  .meal-item {
-    display: flex; align-items: center; gap: 8px; margin-bottom: 3px;
-    padding: 5px 8px; background: var(--bg3); border-radius: var(--radius-sm); font-size: 12px;
-  }
-  .meal-item .meal-name { flex: 1; color: var(--text); }
-  .meal-item .meal-kcal {
-    font-family: 'JetBrains Mono', monospace; color: var(--accent2); font-weight: 600; font-size: 11px;
-  }
-  .meal-item .meal-del {
-    background: none; border: none; color: var(--text3); cursor: pointer;
-    font-size: 14px; padding: 0 4px; transition: all .15s;
-  }
-  .meal-item .meal-del:hover { color: var(--red); }
-  .meal-add { display: flex; gap: 6px; margin-top: 10px; }
-  .meal-add input {
-    font-family: inherit; font-size: 12px; padding: 6px 8px;
-    background: var(--bg3); border: 1px solid var(--border); color: var(--text);
-    border-radius: var(--radius-sm); outline: none;
-  }
-  .meal-add input:focus { border-color: var(--accent); }
-  .meal-add .meal-name-inp { flex: 1; }
-  .meal-name-wrap { position: relative; flex: 1; display: flex; }
-  .meal-name-wrap .meal-name-inp { width: 100%; }
-  .meal-dropdown {
-    display: none; position: absolute; top: 100%; left: 0; right: 0;
-    background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius-sm);
-    max-height: 150px; overflow-y: auto; z-index: 10; margin-top: 2px;
-  }
-  .meal-dropdown-item {
-    padding: 7px 8px; font-size: 12px; cursor: pointer; color: var(--text);
-  }
-  .meal-dropdown-item:active, .meal-dropdown-item.active {
-    background: var(--accent); color: var(--bg);
-  }
-  .meal-add .meal-kcal-inp { width: 70px; text-align: center; font-family: 'JetBrains Mono', monospace; }
-  .meal-add .meal-prot-inp { width: 55px; text-align: center; font-family: 'JetBrains Mono', monospace; }
-  .meal-add .meal-add-btn {
-    background: var(--green); border: none; color: white; padding: 6px 12px;
-    border-radius: var(--radius-sm); cursor: pointer; font-family: inherit; font-weight: 600; font-size: 12px;
-  }
-  .meal-add .meal-add-btn:hover { background: var(--green2); color: var(--bg); }
-  .meal-totals {
-    margin-top: 12px; padding: 10px; background: var(--bg3); border-radius: var(--radius-sm);
-  }
-  .meal-total-line {
-    display: flex; justify-content: space-between; padding: 2px 0;
-    font-family: 'JetBrains Mono', monospace; font-size: 11px;
-  }
-  .meal-total-line .label { color: var(--text3); }
-  .meal-total-line .value { color: var(--text); }
-  .meal-total-line.total { font-weight: 600; border-top: 1px solid var(--border); padding-top: 4px; margin-top: 4px; }
-  .meal-total-line .goal-inp {
-    width: 55px; text-align: center; font-family: 'JetBrains Mono', monospace; font-size: 11px;
-    background: var(--bg2); border: 1px solid var(--border); color: var(--text);
-    border-radius: 4px; padding: 2px 4px; outline: none; font-weight: 600;
-  }
-  .meal-total-line .goal-inp:focus { border-color: var(--accent); }
-  .meal-total-line .goal-inp::placeholder { color: var(--text3); font-weight: 400; }
-  .meal-item .meal-prot {
-    font-family: 'JetBrains Mono', monospace; color: var(--green); font-weight: 600; font-size: 11px;
-  }
-  .meal-item .meal-ratio {
-    font-family: 'JetBrains Mono', monospace; color: var(--text2); font-weight: 600; font-size: 11px; white-space: nowrap;
-  }
+  .tracking-cell:hover { border-color: var(--bg4); }
 
   /* Hidden file input for JSON import */
   #fileInput { display: none; }
-
-  /* === CHARTS MODAL === */
-  .charts-overlay {
-    display: none; position: fixed; inset: 0; background: rgba(0,0,0,.6);
-    z-index: 100; align-items: center; justify-content: center;
-  }
-  .charts-overlay.open { display: flex; }
-  .charts-box {
-    background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius);
-    padding: 20px; width: 800px; max-width: 95vw; max-height: 90vh; overflow-y: auto;
-  }
-  .charts-box h3 { font-size: 15px; font-weight: 600; color: var(--accent2); margin-bottom: 12px; }
-  .chart-range-btns {
-    display: flex; gap: 6px; margin-bottom: 16px; flex-wrap: wrap;
-  }
-  .chart-range-btn {
-    background: var(--bg3); border: 1px solid var(--border); color: var(--text3);
-    padding: 4px 12px; border-radius: var(--radius-sm); cursor: pointer;
-    font-family: inherit; font-size: 11px; transition: all .15s;
-  }
-  .chart-range-btn:hover { border-color: var(--accent); color: var(--accent2); }
-  .chart-range-btn.active { background: var(--accent); border-color: var(--accent); color: white; font-weight: 600; }
-  .chart-canvas-wrap {
-    margin-bottom: 12px;
-  }
-  .chart-canvas-wrap canvas {
-    width: 100%; height: 320px; border-radius: var(--radius-sm);
-    background: var(--bg); border: 1px solid var(--border);
-  }
-  .chart-legend {
-    display: flex; gap: 16px; justify-content: center; margin-bottom: 12px;
-  }
-  .chart-legend-item {
-    display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--text2);
-    font-family: 'JetBrains Mono', monospace;
-  }
-  .chart-legend-dot {
-    width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0;
-  }
-  .chart-no-data {
-    height: 320px; display: flex; align-items: center; justify-content: center;
-    background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm);
-    color: var(--text3); font-size: 12px;
-  }
 
   /* === DESKTOP — bump fonts across the app (mobile keeps the dense default sizing) === */
   @media (min-width: 601px) {
@@ -668,13 +495,8 @@
     .cardio-avg { font-size: 12px; }
     .cardio-delta { font-size: 12px; }
 
-    /* Calorie cell */
-    .calorie-cell { width: 210px; min-width: 210px; padding: 8px 10px; gap: 4px; }
-    .cal-summary-line { font-size: 15px; }
-    .cal-summary-line .cal-icon { font-size: 15px; width: 20px; }
-    .cal-summary-line .cal-unit { font-size: 13px; }
-    .cal-summary-line .cal-goal { font-size: 13px; }
-    .meal-add select { font-size: 14px; padding: 7px 10px; }
+    /* Tracking cell */
+    .tracking-cell { width: 210px; min-width: 210px; padding: 8px 10px; gap: 4px; }
 
     /* Footer */
     .footer-btn { font-size: 14px; padding: 7px 14px; }
@@ -697,25 +519,6 @@
     .manage-close { font-size: 16px; padding: 10px; }
     .manage-hint { font-size: 13px; }
 
-    /* Meal modal */
-    .meal-box h3 { font-size: 19px; }
-    .meal-date { font-size: 13px; }
-    .meal-item { font-size: 15px; padding: 7px 10px; }
-    .meal-item .meal-kcal { font-size: 14px; }
-    .meal-item .meal-prot { font-size: 14px; }
-    .meal-item .meal-ratio { font-size: 14px; }
-    .meal-item .meal-del { font-size: 17px; }
-    .meal-add input { font-size: 15px; padding: 8px 10px; }
-    .meal-dropdown-item { font-size: 15px; padding: 9px 10px; }
-    .meal-add .meal-add-btn { font-size: 15px; padding: 8px 14px; }
-    .meal-total-line { font-size: 14px; }
-    .meal-total-line .goal-inp { font-size: 14px; width: 65px; }
-
-    /* Charts modal */
-    .charts-box h3 { font-size: 19px; }
-    .chart-range-btn { font-size: 14px; padding: 6px 14px; }
-    .chart-legend-item { font-size: 13px; }
-    .chart-no-data { font-size: 15px; }
   }
 
   /* === MOBILE RESPONSIVE === */
@@ -743,12 +546,11 @@
     .day-label-date { font-size: 11px; }
     .day-label .today-tag { margin-top: 0; margin-left: 4px; }
 
-    .calorie-cell {
+    .tracking-cell {
       width: 100%; min-width: 100%; flex-direction: row; flex-wrap: wrap;
       gap: 6px; padding: 8px;
     }
     .cardio-row { flex: 1 1 45%; }
-    .cal-summary-line { flex: 1 1 45%; }
 
     .exercises-row { flex-direction: column; gap: 4px; flex: none; width: 100%; overflow: hidden; }
     .exercise-cell { flex: 1 1 auto; width: 100%; min-width: 0; box-sizing: border-box; }
@@ -763,9 +565,7 @@
     .footer { justify-content: center; }
     .footer-right { justify-content: center; }
 
-    .manage-box, .meal-box { width: 95vw; padding: 14px; }
-    .charts-box { width: 98vw; padding: 12px; }
-    .chart-canvas-wrap canvas { height: 220px; }
+    .manage-box { width: 95vw; padding: 14px; }
   }
 </style>
 </head>
@@ -793,7 +593,6 @@
   <!-- === FOOTER — action buttons === -->
   <div class="footer">
     <div class="footer-right">
-      <button class="footer-btn" onclick="openCharts()">Charts</button>
       <button class="footer-btn" onclick="openManage()">Manage exercises</button>
       <button class="footer-btn" onclick="exportJSON()">Export backup</button>
       <button class="footer-btn" onclick="document.getElementById('fileInput').click()">Import backup</button>
@@ -824,72 +623,6 @@
       <button class="add-btn" onclick="addExercise()">Add</button>
     </div>
     <button class="manage-close" onclick="closeManage()">Close</button>
-  </div>
-</div>
-
-<!-- === MEAL LOG MODAL === -->
-<div class="meal-overlay" id="mealOverlay" onclick="if(event.target===this)closeMeals()">
-  <div class="meal-box">
-    <h3>Meals</h3>
-    <div class="meal-date" id="mealDate"></div>
-    <div id="mealList"></div>
-    <div class="meal-add">
-      <div class="meal-name-wrap">
-        <input type="text" class="meal-name-inp" id="mealNameInp" placeholder="Meal name..." autocomplete="off" oninput="autofillMealKcal();filterMealSuggestions()" onfocus="filterMealSuggestions()" onblur="setTimeout(closeMealDropdown,200)" onkeydown="if(event.key==='Enter'){closeMealDropdown();document.getElementById('mealKcalInp').focus()}else if(event.key==='Escape')closeMealDropdown()">
-        <div id="mealDropdown" class="meal-dropdown"></div>
-      </div>
-      <input type="text" inputmode="decimal" class="meal-kcal-inp" id="mealKcalInp" placeholder="kCal" oninput="this.value=normalizeNum(this.value)" onkeydown="if(event.key==='Enter')document.getElementById('mealProtInp').focus()">
-      <input type="text" inputmode="decimal" class="meal-prot-inp" id="mealProtInp" placeholder="g prot" oninput="this.value=normalizeNum(this.value)" onkeydown="if(event.key==='Enter')addMeal()">
-      <button class="meal-add-btn" onclick="addMeal()">Add</button>
-    </div>
-    <div style="margin-top:4px;text-align:right">
-      <a href="#" id="savedMealsToggle" style="font-size:11px;color:var(--text3);text-decoration:none" onclick="event.preventDefault();toggleSavedMeals()">Manage saved meals</a>
-    </div>
-    <div id="savedMealsList" style="display:none;margin-top:6px;max-height:150px;overflow-y:auto"></div>
-    <div class="meal-totals" id="mealTotals"></div>
-    <button class="manage-close" onclick="closeMeals()">Close</button>
-  </div>
-</div>
-
-<!-- === ACTIVITIES MODAL === -->
-<div class="meal-overlay" id="actOverlay" onclick="if(event.target===this)closeActivities()">
-  <div class="meal-box">
-    <h3>Activities</h3>
-    <div class="meal-date" id="actDate"></div>
-    <div id="actList"></div>
-    <div class="meal-add">
-      <select id="actType" onchange="toggleActFields()"></select>
-      <input type="text" inputmode="decimal" class="meal-kcal-inp" id="actKm" placeholder="km" style="width:60px;display:none" oninput="this.value=normalizeNum(this.value)" onkeydown="if(event.key==='Enter')document.getElementById('actMin').focus()">
-      <input type="text" inputmode="decimal" class="meal-kcal-inp" id="actMin" placeholder="min" style="width:60px;display:none" oninput="this.value=normalizeNum(this.value)" onkeydown="if(event.key==='Enter'){if(document.getElementById('actKg').style.display!=='none')document.getElementById('actKg').focus();else if(document.getElementById('actElev').style.display!=='none')document.getElementById('actElev').focus();else addActivity();}">
-      <input type="text" inputmode="decimal" class="meal-kcal-inp" id="actKg" placeholder="kg" style="width:60px;display:none" oninput="this.value=normalizeNum(this.value)" onkeydown="if(event.key==='Enter'){if(document.getElementById('actElev').style.display!=='none')document.getElementById('actElev').focus();else addActivity();}">
-      <input type="text" inputmode="decimal" class="meal-kcal-inp" id="actElev" placeholder="m↑" style="width:60px;display:none" oninput="this.value=normalizeNum(this.value)" onkeydown="if(event.key==='Enter')addActivity()">
-      <button class="meal-add-btn" onclick="addActivity()">Add</button>
-    </div>
-    <div style="margin-top:4px;text-align:right">
-      <a href="#" style="font-size:11px;color:var(--text3);text-decoration:none" onclick="event.preventDefault();toggleManageActivities()">Manage activity types</a>
-    </div>
-    <div id="manageActList" style="display:none;margin-top:6px"></div>
-    <div class="meal-totals" id="actTotals"></div>
-    <button class="manage-close" onclick="closeActivities()">Close</button>
-  </div>
-</div>
-
-<!-- === CHARTS MODAL === -->
-<div class="charts-overlay" id="chartsOverlay" onclick="if(event.target===this)closeCharts()">
-  <div class="charts-box">
-    <h3>Charts</h3>
-    <div class="chart-range-btns" id="chartRangeBtns">
-      <button class="chart-range-btn" onclick="setChartRange(30)">30 days</button>
-      <button class="chart-range-btn active" onclick="setChartRange(90)">90 days</button>
-      <button class="chart-range-btn" onclick="setChartRange(180)">6 months</button>
-      <button class="chart-range-btn" onclick="setChartRange(365)">1 year</button>
-      <button class="chart-range-btn" onclick="setChartRange(0)">All</button>
-    </div>
-    <div class="chart-legend" id="chartLegend"></div>
-    <div class="chart-canvas-wrap">
-      <canvas id="chartMain"></canvas>
-    </div>
-    <button class="manage-close" onclick="closeCharts()">Close</button>
   </div>
 </div>
 
@@ -955,7 +688,6 @@ function defaultState() {
       { name: 'Squats',                  rings: false, sets: 3 },
       { name: 'Knee Raises',             rings: false, sets: 3 },
     ],
-    goals: { calories: 0, protein: 0 },
     days: {}
   };
 }
@@ -973,8 +705,8 @@ try {
 } catch(e) { state = defaultState(); }
 
 /**
- * MIGRATION — renames old exercise names from previous versions of this file.
- * Also ensures every exercise has a valid 'sets' count (defaults to 3).
+ * MIGRATION — renames old exercise names from previous versions of this file
+ * and strips retired nutrition/activity data that was removed from the schema.
  * Safe to run multiple times.
  */
 function migrate() {
@@ -1003,32 +735,20 @@ function migrate() {
       if (renames[ex.name]) ex.name = renames[ex.name];
     })
   );
-  // Migrate old running/rucking fields to activities array
+  // Strip retired nutrition/activity fields from every logged day.
+  // These were dropped from the schema — we actively delete so saved state stays clean.
   Object.values(state.days || {}).forEach(d => {
-    if (d.running || d.rucking_km) {
-      if (!d.activities) d.activities = [];
-      if (d.running && parseFloat(d.running) > 0) {
-        d.activities.push({ type: 'running', km: d.running, min: d.running_min || '' });
-      }
-      if (d.rucking_km && parseFloat(d.rucking_km) > 0) {
-        const rkm = parseFloat(d.rucking_km);
-        d.activities.push({ type: 'rucking', km: d.rucking_km, min: String(Math.round(rkm / 6 * 60)), kg: d.rucking_kg || '' });
-      }
-      delete d.running; delete d.running_min; delete d.rucking_km; delete d.rucking_kg;
-    }
+    delete d.meals;
+    delete d.activities;
+    delete d.goals;
+    // Very old pre-activities fields (previously migrated into activities[], now gone too)
+    delete d.running; delete d.running_min;
+    delete d.rucking_km; delete d.rucking_kg;
   });
-  // Ensure goals object exists
-  if (!state.goals) state.goals = { calories: 0, protein: 0 };
-  if (state.goals.calorieBonus === undefined) state.goals.calorieBonus = 0;
-  if (state.goals.calorieBonusEnabled === undefined) state.goals.calorieBonusEnabled = false;
-  // Stamp per-day goals on all existing days that don't have them yet (one-time migration)
-  Object.values(state.days || {}).forEach(d => {
-    if (!d.goals) d.goals = JSON.parse(JSON.stringify(state.goals));
-  });
-  // Ensure hiddenMeals array exists (meals hidden from autocomplete suggestions)
-  if (!state.hiddenMeals) state.hiddenMeals = [];
-  // Ensure customActivities array exists (user-defined activity types)
-  if (!state.customActivities) state.customActivities = [];
+  // Drop top-level retired fields from state
+  delete state.goals;
+  delete state.hiddenMeals;
+  delete state.customActivities;
 }
 
 // ============================================================================
@@ -1155,60 +875,6 @@ function normalizeSets(data, name) {
   return data;
 }
 
-/** Returns goals for a specific day — uses per-day snapshot if available, else global state.goals. */
-function getDayGoals(dateKey) {
-  const day = state.days[dateKey];
-  if (day && day.goals) return day.goals;
-  return state.goals;
-}
-
-/** Returns effective calorie goal (base + bonus if enabled) for a specific day, or global if no dateKey. */
-function getEffectiveCalorieGoal(dateKey) {
-  const g = dateKey ? getDayGoals(dateKey) : state.goals;
-  const base = g.calories || 0;
-  if (base > 0 && g.calorieBonusEnabled && g.calorieBonus > 0) {
-    return base + g.calorieBonus;
-  }
-  return base;
-}
-
-/** When goals change, update state.goals (the template) and stamp today + all future existing days.
-    Bonus enabled status is NOT propagated — future days always start with bonus off. */
-function applyGoalsChange() {
-  const todayKey = dk(today);
-  Object.keys(state.days).forEach(k => {
-    if (k >= todayKey) {
-      state.days[k].goals = JSON.parse(JSON.stringify(state.goals));
-      if (k > todayKey) state.days[k].goals.calorieBonusEnabled = false;
-    }
-  });
-}
-
-/** Returns red or green based on goal fulfillment.
-    Normal (protein): red when under, green when met.
-    Inverted (calories): green when under, red when met/over. */
-function goalColor(current, goal, invert) {
-  const met = current >= goal;
-  if (invert) return met ? 'var(--red)' : 'var(--green)';
-  return met ? 'var(--green)' : 'var(--red)';
-}
-
-/** Color-code a meal's protein/100kCal ratio relative to the base ratio (goal protein / goal calories * 100).
-    Above base → green (more green = higher), below → yellow to red gradient. Returns null if no goals set. */
-function ratioColor(ratio, base) {
-  if (!base || base <= 0) return null;
-  const t = ratio / base; // 1.0 = at base
-  // Below base: hue 0 (red) → 80 (yellow-green) as t goes 0→1
-  // Above base: hue 80 → 130 (deep green) as t goes 1→2+
-  let hue;
-  if (t <= 1) {
-    hue = t * 80;
-  } else {
-    hue = 80 + Math.min(t - 1, 1) * 50;
-  }
-  return 'hsl(' + Math.round(hue) + ',75%,48%)';
-}
-
 /** Date → "YYYY-MM-DD" string key for state.days */
 function dk(d) {
   return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
@@ -1265,13 +931,8 @@ function fmt(d) {
  */
 function ensureDay(d) {
   const k = dk(d);
-  if (!state.days[k]) {
-    const g = JSON.parse(JSON.stringify(state.goals));
-    g.calorieBonusEnabled = false;
-    state.days[k] = { exercises: [], goals: g };
-  }
+  if (!state.days[k]) state.days[k] = { exercises: [] };
   const dd = state.days[k];
-  if (!dd.goals) { dd.goals = JSON.parse(JSON.stringify(state.goals)); dd.goals.calorieBonusEnabled = false; }
   const dow = d.getDay();
   // Use custom plan only for today and future dates; past dates use hardcoded PLAN
   const useCustom = state.plan && state.plan[dow] && k >= dk(today);
@@ -1407,59 +1068,14 @@ function getMasteryStreak(exName, goal, numSets, upToDate) {
   return streak;
 }
 
-// ============================================================================
-// MEALS & ACTIVITIES
-// ============================================================================
-
 /** Normalize numeric input: replace comma with dot, strip non-numeric chars, keep only one dot.
-    Used for weight, waist, calories, protein, activity fields — anywhere numbers are entered. */
+    Used for weight, waist, set values, mastery goal — anywhere numbers are entered. */
 function normalizeNum(str) {
   var v = String(str).replace(/,/g, '.');
   v = v.replace(/[^0-9.]/g, '');
   var dot = v.indexOf('.');
   if (dot !== -1) v = v.slice(0, dot + 1) + v.slice(dot + 1).replace(/\./g, '');
   return v;
-}
-
-/** Format a number for display: show one decimal if fractional, otherwise whole number.
-    e.g. 8 → "8", 8.5 → "8.5", 8.0 → "8" */
-function fmtNum(n) { return n % 1 === 0 ? String(Math.trunc(n)) : n.toFixed(1); }
-
-/** Currently open meal modal date key (null = closed). Set by openMeals(). */
-let mealModalDate = null;
-/** Currently open activities modal date key (null = closed). Set by openActivities(). */
-let actModalDate = null;
-
-/** Activity types with icons and required fields */
-const ACTIVITY_TYPES = [
-  { id: 'running', name: 'Running', icon: '\u{1F3C3}', fields: ['km', 'min', 'elev'] },
-  { id: 'walking', name: 'Walking', icon: '\u{1F6B6}', fields: ['km', 'min', 'elev'] },
-  { id: 'rucking', name: 'Rucking', icon: '\u{1F392}', fields: ['km', 'min', 'kg', 'elev'] },
-  { id: 'bicycling', name: 'Bicycling', icon: '\u{1F6B4}', fields: ['km', 'min', 'elev'] }
-];
-
-/** Get all activity types: built-in + user-defined custom activities */
-function getAllActivityTypes() {
-  const custom = (state.customActivities || []).map(c => ({
-    id: c.id, name: c.name, icon: c.icon || '\u{1F3AF}',
-    fields: c.fields || (c.hasKg ? ['km', 'min', 'kg'] : ['km', 'min']),
-    custom: true
-  }));
-  return ACTIVITY_TYPES.concat(custom);
-}
-
-/** Sum of all meals for a day (kCal) */
-function calcDayEaten(dateKey) {
-  const day = state.days[dateKey];
-  if (!day || !day.meals) return 0;
-  return day.meals.reduce((sum, m) => sum + (parseFloat(m.kcal) || 0), 0);
-}
-
-/** Sum of all meals for a day (protein in grams) */
-function calcDayProtein(dateKey) {
-  const day = state.days[dateKey];
-  if (!day || !day.meals) return 0;
-  return day.meals.reduce((sum, m) => sum + (parseFloat(m.protein) || 0), 0);
 }
 
 // ============================================================================
@@ -1508,15 +1124,14 @@ function render() {
       (isToday ? '<div class="today-tag">TODAY</div>' : '');
     row.appendChild(label);
 
-    // Day data setup
+    // Day data setup — create empty record on first access
     const cardioKey = dk(d);
-    if (!state.days[cardioKey]) { const g = JSON.parse(JSON.stringify(state.goals)); g.calorieBonusEnabled = false; state.days[cardioKey] = { exercises: [], goals: g }; }
-    if (!state.days[cardioKey].goals) { state.days[cardioKey].goals = JSON.parse(JSON.stringify(state.goals)); state.days[cardioKey].goals.calorieBonusEnabled = false; }
+    if (!state.days[cardioKey]) state.days[cardioKey] = { exercises: [] };
     const dayData = state.days[cardioKey];
 
-    // Calorie & tracking cell
-    const calCell = document.createElement('div');
-    calCell.className = 'calorie-cell';
+    // Tracking cell — holds weight + waist rows
+    const trackCell = document.createElement('div');
+    trackCell.className = 'tracking-cell';
 
     // Weight row
     const weightRow = document.createElement('div'); weightRow.className = 'cardio-row';
@@ -1534,7 +1149,7 @@ function render() {
     const weightDeltaSpan = document.createElement('span'); weightDeltaSpan.className = 'cardio-delta';
     weightDeltaSpan.textContent = weightDelta === null ? 'Δ-' : 'Δ' + (weightDelta >= 0 ? '+' : '−') + Math.abs(weightDelta).toFixed(1);
     weightRow.appendChild(weightIcon); weightRow.appendChild(weightInp); weightRow.appendChild(weightUnit); weightRow.appendChild(weightAvgSpan); weightRow.appendChild(weightDeltaSpan);
-    calCell.appendChild(weightRow);
+    trackCell.appendChild(weightRow);
 
     // Waist row
     const waistRow = document.createElement('div'); waistRow.className = 'cardio-row';
@@ -1552,47 +1167,9 @@ function render() {
     const waistDeltaSpan = document.createElement('span'); waistDeltaSpan.className = 'cardio-delta';
     waistDeltaSpan.textContent = waistDelta === null ? 'Δ-' : 'Δ' + (waistDelta >= 0 ? '+' : '−') + Math.abs(waistDelta).toFixed(1);
     waistRow.appendChild(waistIcon); waistRow.appendChild(waistInp); waistRow.appendChild(waistUnit); waistRow.appendChild(waistAvgSpan); waistRow.appendChild(waistDeltaSpan);
-    calCell.appendChild(waistRow);
+    trackCell.appendChild(waistRow);
 
-    // Activities line (clickable)
-    const actLine = document.createElement('div'); actLine.className = 'cal-summary-line clickable';
-    const actCount = (dayData.activities || []).length;
-    actLine.innerHTML = '<span class="cal-icon">\u{1F3C3}</span><span class="cal-val">' + (actCount ? actCount + ' activit' + (actCount > 1 ? 'ies' : 'y') : '+ Activity') + '</span>';
-    ((k) => { actLine.onclick = () => openActivities(k); })(cardioKey);
-    calCell.appendChild(actLine);
-
-    // Calories eaten — clickable line that opens the meals modal.
-    // Shows "478 / 2200 kCal" with color-coded goal progress (red→green) if goal is set.
-    const eaten = calcDayEaten(cardioKey);
-    const protEaten = calcDayProtein(cardioKey);
-
-    const calGoal = getEffectiveCalorieGoal(cardioKey);
-    const protGoal = getDayGoals(cardioKey).protein || 0;
-
-    const eatLine = document.createElement('div'); eatLine.className = 'cal-summary-line clickable';
-    let eatHtml = '<span class="cal-icon">\u{1F37D}\u{FE0F}</span><span class="cal-val">' + Math.round(eaten) + '</span>';
-    if (calGoal > 0) {
-      eatHtml += '<span class="cal-goal" style="color:' + goalColor(eaten, calGoal, true) + '">/ ' + calGoal + ' kCal</span>';
-    } else {
-      eatHtml += '<span class="cal-unit">kCal</span>';
-    }
-    eatLine.innerHTML = eatHtml;
-    ((k) => { eatLine.onclick = () => openMeals(k); })(cardioKey);
-    calCell.appendChild(eatLine);
-
-    // Protein eaten
-    const protLine = document.createElement('div'); protLine.className = 'cal-summary-line clickable';
-    let protHtml = '<span class="cal-icon">\u{1F4AA}</span><span class="cal-val">' + Math.round(protEaten) + '</span>';
-    if (protGoal > 0) {
-      protHtml += '<span class="cal-goal" style="color:' + goalColor(protEaten, protGoal) + '">/ ' + protGoal + 'g</span>';
-    } else {
-      protHtml += '<span class="cal-unit">g prot</span>';
-    }
-    protLine.innerHTML = protHtml;
-    ((k) => { protLine.onclick = () => openMeals(k); })(cardioKey);
-    calCell.appendChild(protLine);
-
-    row.appendChild(calCell);
+    row.appendChild(trackCell);
 
     // Exercise cells
     const exRow = document.createElement('div');
@@ -2104,641 +1681,6 @@ function addExercise() {
 }
 
 // ============================================================================
-// MEAL LOG MODAL
-// ============================================================================
-
-/** Open the meals modal for a specific day. Builds autocomplete suggestions first. */
-function openMeals(dateKey) {
-  mealModalDate = dateKey;
-  document.getElementById('mealOverlay').classList.add('open');
-  buildMealSuggestions();
-  renderMeals();
-}
-
-function closeMeals() {
-  document.getElementById('mealOverlay').classList.remove('open');
-  closeMealDropdown();
-  mealModalDate = null;
-}
-
-/**
- * Render the meals modal content: meal list (each item inline-editable),
- * totals, and calorie/protein goal inputs with remaining/over indicators.
- */
-function renderMeals() {
-  if (!mealModalDate) return;
-  if (!state.days[mealModalDate]) { const g = JSON.parse(JSON.stringify(state.goals)); g.calorieBonusEnabled = false; state.days[mealModalDate] = { exercises: [], goals: g }; }
-  const day = state.days[mealModalDate];
-  if (!day.goals) { day.goals = JSON.parse(JSON.stringify(state.goals)); day.goals.calorieBonusEnabled = false; }
-  if (!day.meals) day.meals = [];
-
-  // Date header
-  const [y, m, d] = mealModalDate.split('-').map(Number);
-  const dt = new Date(y, m - 1, d);
-  document.getElementById('mealDate').textContent = DAY_NAMES[dt.getDay()] + ' ' + fmt(dt);
-
-  // Meal list
-  const list = document.getElementById('mealList');
-  list.innerHTML = '';
-  day.meals.forEach((meal, i) => {
-    const item = document.createElement('div'); item.className = 'meal-item';
-
-    // Each meal field (name, kcal, protein) is click-to-edit: clicking replaces
-    // the span with an input, which saves on blur and re-renders.
-    const name = document.createElement('span'); name.className = 'meal-name'; name.textContent = meal.name;
-    name.style.cursor = 'pointer';
-    name.onclick = () => {
-      const inp = document.createElement('input'); inp.type = 'text'; inp.value = meal.name;
-      inp.className = 'meal-name-inp'; inp.style.cssText = 'flex:1;font-size:12px;padding:2px 6px';
-      inp.onblur = () => { meal.name = inp.value.trim() || meal.name; save(); renderMeals(); render(); };
-      inp.onkeydown = (e) => { if (e.key === 'Enter') inp.blur(); };
-      name.replaceWith(inp); inp.focus(); inp.select();
-    };
-
-    const kcal = document.createElement('span'); kcal.className = 'meal-kcal'; kcal.textContent = fmtNum(meal.kcal) + ' kCal';
-    kcal.style.cursor = 'pointer';
-    kcal.onclick = () => {
-      const inp = document.createElement('input'); inp.type = 'text'; inp.inputMode = 'decimal'; inp.value = meal.kcal;
-      inp.className = 'meal-kcal-inp'; inp.style.cssText = 'width:60px;text-align:center;font-size:12px;padding:2px 4px';
-      inp.oninput = () => { inp.value = normalizeNum(inp.value); };
-      inp.onblur = () => { const v = parseFloat(inp.value); if (v > 0) meal.kcal = Math.round(v * 10) / 10; save(); renderMeals(); render(); };
-      inp.onkeydown = (e) => { if (e.key === 'Enter') inp.blur(); };
-      kcal.replaceWith(inp); inp.focus(); inp.select();
-    };
-
-    const prot = document.createElement('span'); prot.className = 'meal-prot'; prot.textContent = fmtNum(meal.protein || 0) + 'g';
-    prot.style.cursor = 'pointer';
-    prot.onclick = () => {
-      const inp = document.createElement('input'); inp.type = 'text'; inp.inputMode = 'decimal'; inp.value = meal.protein || '';
-      inp.className = 'meal-prot-inp'; inp.style.cssText = 'width:45px;text-align:center;font-size:12px;padding:2px 4px';
-      inp.oninput = () => { inp.value = normalizeNum(inp.value); };
-      inp.onblur = () => { meal.protein = Math.round((parseFloat(inp.value) || 0) * 10) / 10; save(); renderMeals(); render(); };
-      inp.onkeydown = (e) => { if (e.key === 'Enter') inp.blur(); };
-      prot.replaceWith(inp); inp.focus(); inp.select();
-    };
-
-    const ratio = document.createElement('span'); ratio.className = 'meal-ratio';
-    const mKcal = parseFloat(meal.kcal) || 0;
-    const mProt = parseFloat(meal.protein) || 0;
-    const mRatio = mKcal > 0 ? mProt / mKcal * 100 : 0;
-    ratio.textContent = mKcal > 0 ? mRatio.toFixed(1) + 'g/100' : '—';
-    const calG = getEffectiveCalorieGoal(mealModalDate);
-    const proG = getDayGoals(mealModalDate).protein || 0;
-    const baseRatio = calG > 0 && proG > 0 ? proG / calG * 100 : 0;
-    const rCol = mKcal > 0 ? ratioColor(mRatio, baseRatio) : null;
-    if (rCol) ratio.style.color = rCol;
-
-    const del = document.createElement('button'); del.className = 'meal-del'; del.textContent = '\u00D7';
-    del.onclick = () => { day.meals.splice(i, 1); save(); renderMeals(); render(); };
-    item.appendChild(name); item.appendChild(kcal); item.appendChild(prot); item.appendChild(ratio); item.appendChild(del);
-    list.appendChild(item);
-  });
-
-  // Totals + goals
-  const totals = document.getElementById('mealTotals');
-  totals.innerHTML = '';
-  const eaten = calcDayEaten(mealModalDate);
-  const protTotal = calcDayProtein(mealModalDate);
-  if (!state.goals) state.goals = { calories: 0, protein: 0 };
-
-  const totalLine = document.createElement('div'); totalLine.className = 'meal-total-line total';
-  totalLine.innerHTML = '<span class="label">Total eaten</span><span class="value">' + fmtNum(eaten) + ' kCal · ' + fmtNum(protTotal) + 'g protein</span>';
-  totals.appendChild(totalLine);
-
-  // Per-day goals for display
-  const dayG = getDayGoals(mealModalDate);
-
-  // Calorie goal
-  const calGoalLine = document.createElement('div'); calGoalLine.className = 'meal-total-line';
-  const calGoalLabel = document.createElement('span'); calGoalLabel.className = 'label'; calGoalLabel.textContent = 'Calorie goal';
-  const calGoalVal = document.createElement('span'); calGoalVal.className = 'value';
-  const calGoalInp = document.createElement('input'); calGoalInp.className = 'goal-inp';
-  calGoalInp.type = 'text'; calGoalInp.inputMode = 'decimal'; calGoalInp.placeholder = '—';
-  calGoalInp.value = state.goals.calories || '';
-  calGoalInp.oninput = () => { calGoalInp.value = normalizeNum(calGoalInp.value); };
-  calGoalInp.onchange = () => { state.goals.calories = parseInt(calGoalInp.value) || 0; applyGoalsChange(); save(); renderMeals(); render(); };
-  const calGoalUnit = document.createTextNode(' kCal');
-  calGoalVal.appendChild(calGoalInp); calGoalVal.appendChild(calGoalUnit);
-  const effectiveCal = getEffectiveCalorieGoal(mealModalDate);
-  if (effectiveCal > 0) {
-    const remaining = effectiveCal - eaten;
-    const remSpan = document.createElement('span');
-    remSpan.style.cssText = 'margin-left:8px;color:' + goalColor(eaten, effectiveCal, true);
-    remSpan.textContent = (remaining >= 0 ? fmtNum(remaining) + ' left' : fmtNum(Math.abs(remaining)) + ' over');
-    calGoalVal.appendChild(remSpan);
-  }
-  calGoalLine.appendChild(calGoalLabel); calGoalLine.appendChild(calGoalVal);
-  totals.appendChild(calGoalLine);
-
-  // Calorie bonus
-  const bonusLine = document.createElement('div'); bonusLine.className = 'meal-total-line';
-  const bonusLabel = document.createElement('span'); bonusLabel.className = 'label';
-  const bonusCb = document.createElement('input'); bonusCb.type = 'checkbox';
-  bonusCb.checked = !!state.goals.calorieBonusEnabled;
-  bonusCb.style.cssText = 'margin-right:6px;vertical-align:middle;cursor:pointer';
-  bonusCb.onchange = () => { state.goals.calorieBonusEnabled = bonusCb.checked; applyGoalsChange(); save(); renderMeals(); render(); };
-  bonusLabel.appendChild(bonusCb);
-  bonusLabel.appendChild(document.createTextNode('Bonus'));
-  const bonusVal = document.createElement('span'); bonusVal.className = 'value';
-  const bonusInp = document.createElement('input'); bonusInp.className = 'goal-inp';
-  bonusInp.type = 'text'; bonusInp.inputMode = 'decimal'; bonusInp.placeholder = '—';
-  bonusInp.value = state.goals.calorieBonus || '';
-  bonusInp.oninput = () => { bonusInp.value = normalizeNum(bonusInp.value); };
-  bonusInp.onchange = () => { state.goals.calorieBonus = parseInt(bonusInp.value) || 0; applyGoalsChange(); save(); renderMeals(); render(); };
-  const bonusUnit = document.createTextNode(' kCal');
-  bonusVal.appendChild(bonusInp); bonusVal.appendChild(bonusUnit);
-  if (state.goals.calorieBonusEnabled && effectiveCal > 0 && dayG.calories > 0) {
-    const effSpan = document.createElement('span');
-    effSpan.style.cssText = 'margin-left:8px;color:var(--text3);font-size:11px';
-    effSpan.textContent = '(total: ' + effectiveCal + ')';
-    bonusVal.appendChild(effSpan);
-  }
-  bonusLine.appendChild(bonusLabel); bonusLine.appendChild(bonusVal);
-  totals.appendChild(bonusLine);
-
-  // Protein goal
-  const protGoalLine = document.createElement('div'); protGoalLine.className = 'meal-total-line';
-  const protGoalLabel = document.createElement('span'); protGoalLabel.className = 'label'; protGoalLabel.textContent = 'Protein goal';
-  const protGoalVal = document.createElement('span'); protGoalVal.className = 'value';
-  const protGoalInp = document.createElement('input'); protGoalInp.className = 'goal-inp';
-  protGoalInp.type = 'text'; protGoalInp.inputMode = 'decimal'; protGoalInp.placeholder = '—';
-  protGoalInp.value = state.goals.protein || '';
-  protGoalInp.oninput = () => { protGoalInp.value = normalizeNum(protGoalInp.value); };
-  protGoalInp.onchange = () => { state.goals.protein = parseInt(protGoalInp.value) || 0; applyGoalsChange(); save(); renderMeals(); render(); };
-  const protGoalUnit = document.createTextNode(' g');
-  protGoalVal.appendChild(protGoalInp); protGoalVal.appendChild(protGoalUnit);
-  if (dayG.protein > 0) {
-    const remaining = dayG.protein - protTotal;
-    const remSpan = document.createElement('span');
-    remSpan.style.cssText = 'margin-left:8px;color:' + goalColor(protTotal, dayG.protein);
-    remSpan.textContent = (remaining >= 0 ? fmtNum(remaining) + 'g left' : fmtNum(Math.abs(remaining)) + 'g over');
-    protGoalVal.appendChild(remSpan);
-  }
-  protGoalLine.appendChild(protGoalLabel); protGoalLine.appendChild(protGoalVal);
-  totals.appendChild(protGoalLine);
-
-  // Base ratio line (only shown when both goals are set)
-  const cg = getEffectiveCalorieGoal(mealModalDate);
-  const pg = dayG.protein || 0;
-  if (cg > 0 && pg > 0) {
-    const brLine = document.createElement('div'); brLine.className = 'meal-total-line';
-    const brLabel = document.createElement('span'); brLabel.className = 'label'; brLabel.textContent = 'Base ratio';
-    const brVal = document.createElement('span'); brVal.className = 'value';
-    brVal.textContent = (pg / cg * 100).toFixed(1) + ' g/100 kCal';
-    brLine.appendChild(brLabel); brLine.appendChild(brVal);
-    totals.appendChild(brLine);
-  }
-}
-
-/** Build map of all unique historical meals (excluding hidden and stale ones).
-    Staleness rule: a meal is hidden when days-since-last-eaten > min(count * 30, 90).
-    Frequent meals linger longer than one-offs, but nothing survives past 90 idle days. */
-function getMealMap() {
-  const hidden = new Set((state.hiddenMeals || []).map(n => n.toLowerCase()));
-  const map = {};  // name (lowercase) → { name, kcal, protein, count, lastDate }
-  for (const [dateKey, day] of Object.entries(state.days)) {
-    if (!day.meals) continue;
-    for (const m of day.meals) {
-      const key = m.name.toLowerCase();
-      if (hidden.has(key)) continue;
-      if (map[key]) {
-        map[key].count++;
-        // Keep kcal/protein from the most recent occurrence (date keys sort lexicographically)
-        if (dateKey > map[key].lastDate) {
-          map[key].kcal = m.kcal;
-          map[key].protein = m.protein || 0;
-          map[key].lastDate = dateKey;
-        }
-      } else {
-        map[key] = { name: m.name, kcal: m.kcal, protein: m.protein || 0, count: 1, lastDate: dateKey };
-      }
-    }
-  }
-  // Apply staleness filter
-  const todayKey = dk(today);
-  for (const key of Object.keys(map)) {
-    const e = map[key];
-    if (e.lastDate >= todayKey) continue;  // today or future → always fresh
-    const lp = e.lastDate.split('-').map(Number);
-    const daysSince = Math.round((today - new Date(lp[0], lp[1] - 1, lp[2])) / 86400000);
-    if (daysSince > Math.min(e.count * 30, 90)) delete map[key];
-  }
-  return map;
-}
-
-/** No-op — replaced by custom dropdown (filterMealSuggestions). Kept for call-site compat. */
-function buildMealSuggestions() {}
-
-/** Show filtered meal suggestions dropdown below the name input. */
-function filterMealSuggestions() {
-  const input = document.getElementById('mealNameInp');
-  const dropdown = document.getElementById('mealDropdown');
-  const query = input.value.trim().toLowerCase();
-  const map = getMealMap();
-  let entries = Object.values(map).sort((a, b) => b.count - a.count);
-  if (query) entries = entries.filter(e => e.name.toLowerCase().includes(query));
-  entries = entries.slice(0, 15);
-  if (!entries.length) { dropdown.style.display = 'none'; return; }
-  dropdown.innerHTML = '';
-  entries.forEach(entry => {
-    const div = document.createElement('div');
-    div.className = 'meal-dropdown-item';
-    div.textContent = entry.name + ' \u2014 ' + fmtNum(entry.kcal) + ' kCal / ' + fmtNum(entry.protein) + 'g';
-    div.onpointerdown = (e) => {
-      e.preventDefault();
-      input.value = entry.name;
-      document.getElementById('mealKcalInp').value = entry.kcal;
-      document.getElementById('mealProtInp').value = entry.protein || '';
-      dropdown.style.display = 'none';
-      document.getElementById('mealKcalInp').focus();
-    };
-    dropdown.appendChild(div);
-  });
-  dropdown.style.display = 'block';
-}
-
-/** Hide the meal suggestions dropdown. */
-function closeMealDropdown() {
-  document.getElementById('mealDropdown').style.display = 'none';
-}
-
-/** Toggle the saved meals management list. */
-function toggleSavedMeals() {
-  const container = document.getElementById('savedMealsList');
-  if (container.style.display !== 'none') { container.style.display = 'none'; return; }
-  container.style.display = 'block';
-  renderSavedMeals();
-}
-
-/** Current sort column for the saved meals management list */
-let savedMealsSort = 'count'; // 'count' | 'name' | 'kcal' | 'protein'
-/** Sort direction — false=descending (default), true=ascending. Toggled by clicking active sort button. */
-let savedMealsSortAsc = false;
-
-/** Render the saved meals list with sort buttons and hide buttons. */
-function renderSavedMeals() {
-  const container = document.getElementById('savedMealsList');
-  const map = getMealMap();
-  const all = Object.values(map);
-  container.innerHTML = '';
-  if (all.length === 0) {
-    container.innerHTML = '<div style="font-size:11px;color:var(--text3);padding:4px">No saved meals</div>';
-    return;
-  }
-
-  // Sort bar
-  const sortBar = document.createElement('div');
-  sortBar.style.cssText = 'display:flex;gap:4px;margin-bottom:6px';
-  const sorts = [
-    { key: 'count', label: 'Freq' },
-    { key: 'name', label: 'Name' },
-    { key: 'kcal', label: 'kCal' },
-    { key: 'protein', label: 'Prot' },
-    { key: 'ratio', label: 'p/kCal' },
-  ];
-  for (const s of sorts) {
-    const btn = document.createElement('button');
-    btn.textContent = s.label;
-    const active = savedMealsSort === s.key;
-    btn.textContent = s.label + (active ? (savedMealsSortAsc ? ' \u25B2' : ' \u25BC') : '');
-    btn.style.cssText = 'font-family:inherit;font-size:10px;padding:2px 8px;border-radius:4px;cursor:pointer;border:1px solid var(--border);' +
-      (active ? 'background:var(--accent);color:var(--bg);font-weight:600' : 'background:var(--bg3);color:var(--text3)');
-    btn.onclick = () => {
-      if (savedMealsSort === s.key) savedMealsSortAsc = !savedMealsSortAsc;
-      else { savedMealsSort = s.key; savedMealsSortAsc = false; }
-      renderSavedMeals();
-    };
-    sortBar.appendChild(btn);
-  }
-  container.appendChild(sortBar);
-
-  // Sort entries
-  const dir = savedMealsSortAsc ? 1 : -1;
-  const ratioOf = (e) => e.kcal > 0 ? e.protein / e.kcal : 0;
-  if (savedMealsSort === 'name') all.sort((a, b) => dir * a.name.localeCompare(b.name));
-  else if (savedMealsSort === 'kcal') all.sort((a, b) => dir * (b.kcal - a.kcal));
-  else if (savedMealsSort === 'protein') all.sort((a, b) => dir * (b.protein - a.protein));
-  else if (savedMealsSort === 'ratio') all.sort((a, b) => dir * (ratioOf(b) - ratioOf(a)));
-  else all.sort((a, b) => dir * (b.count - a.count));
-
-  for (const entry of all) {
-    const row = document.createElement('div');
-    row.style.cssText = 'display:flex;align-items:center;gap:6px;padding:3px 8px;background:var(--bg3);border-radius:4px;margin-bottom:2px;font-size:11px';
-    const name = document.createElement('span');
-    name.style.cssText = 'flex:1;color:var(--text)';
-    name.textContent = entry.name;
-    const info = document.createElement('span');
-    info.style.cssText = 'color:var(--text3);font-family:"JetBrains Mono",monospace;font-size:10px';
-    info.textContent = fmtNum(entry.kcal) + ' kCal / ' + fmtNum(entry.protein) + 'g · ';
-    const eRatioVal = entry.kcal > 0 ? entry.protein / entry.kcal * 100 : 0;
-    const eRatioSpan = document.createElement('span');
-    eRatioSpan.textContent = entry.kcal > 0 ? eRatioVal.toFixed(1) + 'g/100' : '—';
-    eRatioSpan.style.fontWeight = '600';
-    const smCalG = getEffectiveCalorieGoal();
-    const smProG = state.goals && state.goals.protein || 0;
-    const smBase = smCalG > 0 && smProG > 0 ? smProG / smCalG * 100 : 0;
-    const smCol = entry.kcal > 0 ? ratioColor(eRatioVal, smBase) : null;
-    if (smCol) eRatioSpan.style.color = smCol;
-    info.appendChild(eRatioSpan);
-    info.appendChild(document.createTextNode(' · \u00D7' + entry.count));
-    const del = document.createElement('button');
-    del.style.cssText = 'background:none;border:none;color:var(--text3);cursor:pointer;font-size:13px;padding:0 4px';
-    del.textContent = '\u00D7';
-    del.title = 'Hide from suggestions';
-    del.onclick = () => {
-      if (!state.hiddenMeals) state.hiddenMeals = [];
-      state.hiddenMeals.push(entry.name.toLowerCase());
-      save();
-      buildMealSuggestions();
-      renderSavedMeals();
-    };
-    row.appendChild(name); row.appendChild(info); row.appendChild(del);
-    container.appendChild(row);
-  }
-}
-
-/** When user picks a suggestion, auto-fill the kCal and protein fields.
-    Uses getMealMap() which returns the most recent values and respects hiddenMeals. */
-function autofillMealKcal() {
-  const nameVal = document.getElementById('mealNameInp').value.trim().toLowerCase();
-  const entry = getMealMap()[nameVal];
-  if (entry) {
-    document.getElementById('mealKcalInp').value = entry.kcal;
-    document.getElementById('mealProtInp').value = entry.protein || '';
-  }
-}
-
-/** Add a new meal from the input fields, then clear inputs and rebuild suggestions */
-function addMeal() {
-  if (!mealModalDate) return;
-  const nameInp = document.getElementById('mealNameInp');
-  const kcalInp = document.getElementById('mealKcalInp');
-  const protInp = document.getElementById('mealProtInp');
-  const name = nameInp.value.trim();
-  const kcal = Math.round((parseFloat(normalizeNum(kcalInp.value)) || 0) * 10) / 10;
-  if (!name || !kcal) return;
-  const protein = Math.round((parseFloat(normalizeNum(protInp.value)) || 0) * 10) / 10;
-  const day = state.days[mealModalDate];
-  if (!day.meals) day.meals = [];
-  day.meals.push({ name, kcal, protein });
-  save();
-  nameInp.value = ''; kcalInp.value = ''; protInp.value = '';
-  nameInp.focus();
-  buildMealSuggestions();
-  renderMeals(); render();
-}
-
-// ============================================================================
-// ACTIVITIES MODAL
-// ============================================================================
-
-/** Open activities modal — populates the activity type dropdown and renders existing activities */
-function openActivities(dateKey) {
-  actModalDate = dateKey;
-  const sel = document.getElementById('actType');
-  sel.innerHTML = '';
-  getAllActivityTypes().forEach(t => {
-    const o = document.createElement('option');
-    o.value = t.id; o.textContent = t.icon + ' ' + t.name;
-    sel.appendChild(o);
-  });
-  toggleActFields();
-  document.getElementById('actOverlay').classList.add('open');
-  renderActivities();
-}
-
-function closeActivities() {
-  document.getElementById('actOverlay').classList.remove('open');
-  actModalDate = null;
-}
-
-/** Show/hide activity input fields based on the selected type's field definitions */
-function toggleActFields() {
-  const typeId = document.getElementById('actType').value;
-  const type = getAllActivityTypes().find(t => t.id === typeId);
-  const fields = (type && type.fields) || ['km', 'min'];
-  document.getElementById('actKm').style.display = fields.includes('km') ? '' : 'none';
-  document.getElementById('actMin').style.display = fields.includes('min') ? '' : 'none';
-  document.getElementById('actKg').style.display = fields.includes('kg') ? '' : 'none';
-  document.getElementById('actElev').style.display = fields.includes('elev') ? '' : 'none';
-}
-
-/** Render activity list with inline-editable fields and delete buttons */
-function renderActivities() {
-  if (!actModalDate) return;
-  if (!state.days[actModalDate]) state.days[actModalDate] = { exercises: [] };
-  const day = state.days[actModalDate];
-  if (!day.activities) day.activities = [];
-
-  const [y, m, d] = actModalDate.split('-').map(Number);
-  const dt = new Date(y, m - 1, d);
-  document.getElementById('actDate').textContent = DAY_NAMES[dt.getDay()] + ' ' + fmt(dt);
-
-  const list = document.getElementById('actList');
-  list.innerHTML = '';
-
-  day.activities.forEach((act, i) => {
-    const allTypes = getAllActivityTypes();
-    const type = allTypes.find(t => t.id === act.type) || { id: act.type, name: act.type, icon: '\u{1F3AF}', fields: ['km', 'min'] };
-    const item = document.createElement('div'); item.className = 'meal-item';
-    item.style.cssText = 'flex-wrap:wrap;gap:4px';
-
-    const label = document.createElement('span'); label.style.cssText = 'font-size:12px;color:var(--text);flex-shrink:0';
-    label.textContent = type.icon + ' ' + type.name;
-    item.appendChild(label);
-
-    // Factory for click-to-edit activity fields (same pattern as meal inline editing)
-    const makeField = (val, unit, key) => {
-      const span = document.createElement('span');
-      span.style.cssText = 'font-family:"JetBrains Mono",monospace;font-size:11px;color:var(--accent2);cursor:pointer';
-      span.textContent = (val || '?') + ' ' + unit;
-      span.onclick = () => {
-        const inp = document.createElement('input'); inp.type = 'text'; inp.inputMode = 'decimal'; inp.value = val || '';
-        inp.style.cssText = 'width:50px;text-align:center;font-size:11px;padding:2px 4px';
-        inp.className = 'meal-kcal-inp';
-        inp.oninput = () => { inp.value = normalizeNum(inp.value); };
-        inp.onblur = () => { act[key] = inp.value.trim(); save(); renderActivities(); render(); };
-        inp.onkeydown = (e) => { if (e.key === 'Enter') inp.blur(); };
-        span.replaceWith(inp); inp.focus(); inp.select();
-      };
-      return span;
-    };
-
-    const flds = (type.fields) || ['km', 'min'];
-    if (flds.includes('km')) item.appendChild(makeField(act.km, 'km', 'km'));
-    if (flds.includes('min')) item.appendChild(makeField(act.min, 'min', 'min'));
-    if (flds.includes('kg')) item.appendChild(makeField(act.kg, 'kg', 'kg'));
-    if (flds.includes('elev')) item.appendChild(makeField(act.elev, 'm↑', 'elev'));
-
-    const del = document.createElement('button'); del.className = 'meal-del'; del.textContent = '\u00D7';
-    del.onclick = () => { day.activities.splice(i, 1); save(); renderActivities(); render(); };
-    item.appendChild(del);
-    list.appendChild(item);
-  });
-
-}
-
-/** Add a new activity from the modal input fields */
-function addActivity() {
-  if (!actModalDate) return;
-  const type = document.getElementById('actType').value;
-  const km = normalizeNum(document.getElementById('actKm').value.trim());
-  const min = normalizeNum(document.getElementById('actMin').value.trim());
-  const kg = normalizeNum(document.getElementById('actKg').value.trim());
-  const elev = normalizeNum(document.getElementById('actElev').value.trim());
-  const typeDef = getAllActivityTypes().find(t => t.id === type);
-  const fields = (typeDef && typeDef.fields) || ['km', 'min'];
-  // Require at least one field to have a value
-  if (!km && !min && !kg && !elev) return;
-  const day = state.days[actModalDate];
-  if (!day.activities) day.activities = [];
-  const act = { type };
-  if (fields.includes('km')) act.km = km;
-  if (fields.includes('min')) act.min = min;
-  if (fields.includes('kg')) act.kg = kg;
-  if (fields.includes('elev')) act.elev = elev;
-  day.activities.push(act);
-  save();
-  document.getElementById('actKm').value = '';
-  document.getElementById('actMin').value = '';
-  document.getElementById('actKg').value = '';
-  document.getElementById('actElev').value = '';
-  renderActivities(); render();
-}
-
-// ============================================================================
-// MANAGE CUSTOM ACTIVITY TYPES
-// ============================================================================
-
-/** Icons available for custom activity types */
-const ACTIVITY_ICONS = [
-  '\u{1F3AF}', '\u{1F3CA}', '\u{1F9D7}', '\u{1F6F6}', '\u{26F7}\u{FE0F}',
-  '\u{1F3CB}\u{FE0F}', '\u{1F938}', '\u{1F93C}', '\u{1F93A}', '\u{1F3BE}',
-  '\u{26BD}', '\u{1F3D3}', '\u{1F6F9}', '\u{1F3C4}', '\u{26F3}',
-  '\u{1F9D8}', '\u{1FA82}', '\u{1F6A3}', '\u{1F3C7}', '\u{1F3BF}'
-];
-
-/** Toggle the manage custom activities panel */
-function toggleManageActivities() {
-  const container = document.getElementById('manageActList');
-  if (container.style.display !== 'none') { container.style.display = 'none'; return; }
-  container.style.display = 'block';
-  renderManageActivities();
-}
-
-/** Helper: format a fields array as short label string (e.g. "km, min, m↑") */
-function fmtFields(fields) {
-  const labels = { km: 'km', min: 'min', kg: 'kg', elev: 'm\u2191' };
-  return (fields || []).map(f => labels[f] || f).join(', ');
-}
-
-/** Helper: refresh the activity type dropdown and toggle field visibility */
-function refreshActDropdown(selectValue) {
-  const sel = document.getElementById('actType');
-  const cur = selectValue || sel.value;
-  sel.innerHTML = '';
-  getAllActivityTypes().forEach(t => {
-    const o = document.createElement('option');
-    o.value = t.id; o.textContent = t.icon + ' ' + t.name;
-    sel.appendChild(o);
-  });
-  if (selectValue) sel.value = selectValue;
-  else if (sel.querySelector('option[value="' + cur + '"]')) sel.value = cur;
-  toggleActFields();
-}
-
-/** Render the manage custom activities panel — list existing + add form */
-function renderManageActivities() {
-  const container = document.getElementById('manageActList');
-  container.innerHTML = '';
-
-  // Existing custom activities
-  (state.customActivities || []).forEach((ca, i) => {
-    const fields = ca.fields || (ca.hasKg ? ['km', 'min', 'kg'] : ['km', 'min']);
-    const row = document.createElement('div');
-    row.style.cssText = 'display:flex;align-items:center;gap:6px;padding:3px 8px;background:var(--bg3);border-radius:4px;margin-bottom:2px;font-size:11px';
-    const label = document.createElement('span');
-    label.style.cssText = 'flex:1;color:var(--text)';
-    label.textContent = (ca.icon || '\u{1F3AF}') + ' ' + ca.name;
-    const info = document.createElement('span');
-    info.style.cssText = 'color:var(--text3);font-size:10px';
-    info.textContent = fmtFields(fields);
-    const del = document.createElement('button');
-    del.style.cssText = 'background:none;border:none;color:var(--text3);cursor:pointer;font-size:13px;padding:0 4px';
-    del.textContent = '\u00D7';
-    del.title = 'Remove activity type';
-    del.onclick = () => {
-      state.customActivities.splice(i, 1);
-      save(); renderManageActivities(); refreshActDropdown();
-    };
-    row.appendChild(label); row.appendChild(info); row.appendChild(del);
-    container.appendChild(row);
-  });
-
-  // Add new custom activity form
-  const form = document.createElement('div');
-  form.style.cssText = 'display:flex;align-items:center;gap:4px;margin-top:6px;flex-wrap:wrap';
-
-  // Icon picker
-  const iconSel = document.createElement('select');
-  iconSel.style.cssText = 'font-size:14px;padding:2px 4px;background:var(--bg3);color:var(--text);border:1px solid var(--border);border-radius:4px;cursor:pointer';
-  ACTIVITY_ICONS.forEach(ic => {
-    const o = document.createElement('option'); o.value = ic; o.textContent = ic;
-    iconSel.appendChild(o);
-  });
-
-  // Name input
-  const nameInp = document.createElement('input'); nameInp.type = 'text'; nameInp.placeholder = 'Activity name';
-  nameInp.style.cssText = 'flex:1;min-width:80px;font-size:11px;padding:4px 6px;background:var(--bg3);color:var(--text);border:1px solid var(--border);border-radius:4px;font-family:inherit';
-
-  // Field checkboxes (km, min, kg, m↑)
-  const fieldDefs = [
-    { key: 'km', label: 'km', checked: true },
-    { key: 'min', label: 'min', checked: true },
-    { key: 'kg', label: 'kg', checked: false },
-    { key: 'elev', label: 'm\u2191', checked: false }
-  ];
-  const checks = {};
-  const checkRow = document.createElement('div');
-  checkRow.style.cssText = 'display:flex;gap:6px;width:100%;margin-top:2px';
-  fieldDefs.forEach(fd => {
-    const lbl = document.createElement('label');
-    lbl.style.cssText = 'font-size:10px;color:var(--text2);display:flex;align-items:center;gap:2px;cursor:pointer';
-    const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = fd.checked;
-    checks[fd.key] = cb;
-    lbl.appendChild(cb);
-    lbl.appendChild(document.createTextNode(fd.label));
-    checkRow.appendChild(lbl);
-  });
-
-  // Add button
-  const addBtn = document.createElement('button');
-  addBtn.textContent = 'Add';
-  addBtn.style.cssText = 'font-size:11px;padding:4px 10px;background:var(--accent);color:white;border:none;border-radius:4px;cursor:pointer;font-family:inherit;font-weight:600';
-  addBtn.onclick = () => {
-    const name = nameInp.value.trim();
-    if (!name) return;
-    if (!state.customActivities) state.customActivities = [];
-    const id = 'custom_' + name.toLowerCase().replace(/[^a-z0-9]/g, '_');
-    if (getAllActivityTypes().some(t => t.id === id || t.name.toLowerCase() === name.toLowerCase())) {
-      alert('Activity "' + name + '" already exists.');
-      return;
-    }
-    const fields = Object.keys(checks).filter(k => checks[k].checked);
-    if (fields.length === 0) { alert('Select at least one field.'); return; }
-    state.customActivities.push({ id, name, icon: iconSel.value, fields });
-    save();
-    renderManageActivities(); refreshActDropdown(id);
-  };
-
-  nameInp.onkeydown = (e) => { if (e.key === 'Enter') addBtn.click(); };
-
-  form.appendChild(iconSel); form.appendChild(nameInp); form.appendChild(addBtn);
-  container.appendChild(form);
-  container.appendChild(checkRow);
-}
-
-// ============================================================================
 // EXPORT / IMPORT
 // ============================================================================
 
@@ -2748,7 +1690,8 @@ function exportJSON() {
     'workout_log_' + dk(today) + '.json');
 }
 
-/** Download training log as CSV (semicolon-separated, UTF-8 with BOM) */
+/** Download training log as CSV (semicolon-separated, UTF-8 with BOM).
+    Columns: Date, Day, Exercise, Set1..SetN (per-exercise rows) + Weight/Waist rows. */
 function exportCSV() {
   // Dynamic column count based on max sets across all exercises
   let maxS = 3;
@@ -2768,26 +1711,11 @@ function exportCSV() {
       for (let i = 0; i < maxS; i++) line.push(ex.sets[i] || '');
       csv += line.join(';') + '\n';
     });
-    // Activities
-    if (day.activities && day.activities.length) {
-      day.activities.forEach(act => {
-        const type = getAllActivityTypes().find(t => t.id === act.type);
-        let desc = (act.km || '') + ' km / ' + (act.min || '') + ' min';
-        if (act.kg) desc += ' / ' + act.kg + ' kg';
-        if (act.elev) desc += ' / ' + act.elev + ' m↑';
-        csv += [k, DAY_NAMES[d.getDay()], (type ? type.name : act.type), desc].join(';') + '\n';
-      });
-    }
     if (day.weight) {
       csv += [k, DAY_NAMES[d.getDay()], 'Weight', day.weight + ' kg'].join(';') + '\n';
     }
     if (day.waist) {
       csv += [k, DAY_NAMES[d.getDay()], 'Waist', day.waist + ' cm'].join(';') + '\n';
-    }
-    if (day.meals && day.meals.length) {
-      day.meals.forEach(m => {
-        csv += [k, DAY_NAMES[d.getDay()], 'Meal: ' + m.name, m.kcal + ' kCal', (m.protein || 0) + 'g protein'].join(';') + '\n';
-      });
     }
   });
   dl(new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' }),
@@ -2815,206 +1743,6 @@ function importJSON(e) {
   };
   r.readAsText(file);
   e.target.value = '';  // Reset so same file can be re-imported
-}
-
-// ============================================================================
-// CHARTS
-// ============================================================================
-
-/** Number of days to show in charts (0 = all time). Changed by range buttons. */
-let chartRangeDays = 90;
-
-function openCharts() {
-  document.getElementById('chartsOverlay').classList.add('open');
-  renderCharts();
-}
-
-function closeCharts() {
-  document.getElementById('chartsOverlay').classList.remove('open');
-}
-
-/** Switch chart time range (30d/90d/180d/all) and re-render */
-function setChartRange(days) {
-  chartRangeDays = days;
-  document.querySelectorAll('.chart-range-btn').forEach(b => b.classList.remove('active'));
-  event.target.classList.add('active');
-  renderCharts();
-}
-
-/**
- * Gather time-series data from state.days.
- * Returns sorted array of { date: Date, value: number } for the selected range.
- */
-function gatherChartData(fieldOrFn) {
-  const cutoff = chartRangeDays > 0
-    ? new Date(today.getTime() - chartRangeDays * 86400000)
-    : null;
-  const points = [];
-  for (const [k, day] of Object.entries(state.days)) {
-    const [y, m, d] = k.split('-').map(Number);
-    const date = new Date(y, m - 1, d);
-    if (cutoff && date < cutoff) continue;
-    const val = typeof fieldOrFn === 'function' ? fieldOrFn(day, k) : parseFloat(day[fieldOrFn]);
-    if (val && val > 0) points.push({ date, value: val });
-  }
-  points.sort((a, b) => a.date - b.date);
-  return points;
-}
-
-/** Series definitions: field/function, label, unit, colors */
-const CHART_SERIES = [
-  { id: 'weight',   label: 'Weight',   unit: 'kg',   color: '#6c5ce7', light: '#a29bfe', field: 'weight' },
-  { id: 'waist',    label: 'Waist',    unit: 'cm',   color: '#00b894', light: '#55efc4', field: 'waist' },
-  { id: 'calories', label: 'Calories', unit: 'kCal', color: '#e17055', light: '#fab1a0', field: (day, k) => calcDayEaten(k) },
-  { id: 'protein',  label: 'Protein',  unit: 'g',    color: '#fdcb6e', light: '#ffeaa7', field: (day, k) => calcDayProtein(k) },
-];
-
-/** Render the charts modal — builds legend from CHART_SERIES, gathers data, draws canvas */
-function renderCharts() {
-  // Build legend
-  const legend = document.getElementById('chartLegend');
-  legend.innerHTML = '';
-  CHART_SERIES.forEach(s => {
-    const item = document.createElement('div'); item.className = 'chart-legend-item';
-    const dot = document.createElement('span'); dot.className = 'chart-legend-dot'; dot.style.background = s.color;
-    const txt = document.createElement('span'); txt.textContent = s.label + ' (' + s.unit + ')';
-    item.appendChild(dot); item.appendChild(txt);
-    legend.appendChild(item);
-  });
-
-  // Gather data for each series
-  const allSeries = CHART_SERIES.map(s => ({
-    ...s,
-    data: gatherChartData(s.field),
-  }));
-
-  drawCombinedChart('chartMain', allSeries);
-}
-
-/**
- * Draw multiple normalized line series on one canvas.
- * Each series is independently scaled to [0,1] so different units overlay cleanly.
- */
-function drawCombinedChart(canvasId, seriesList) {
-  const canvas = document.getElementById(canvasId);
-  if (!canvas) return;
-
-  const hasData = seriesList.some(s => s.data.length > 0);
-  const wrap = canvas.parentElement;
-  const existing = wrap.querySelector('.chart-no-data');
-  if (!hasData) {
-    canvas.style.display = 'none';
-    if (!existing) {
-      const nd = document.createElement('div'); nd.className = 'chart-no-data';
-      nd.textContent = 'No data yet';
-      wrap.appendChild(nd);
-    }
-    return;
-  }
-  canvas.style.display = '';
-  if (existing) existing.remove();
-
-  const dpr = window.devicePixelRatio || 1;
-  const rect = canvas.getBoundingClientRect();
-  canvas.width = rect.width * dpr;
-  canvas.height = rect.height * dpr;
-  const ctx = canvas.getContext('2d');
-  ctx.scale(dpr, dpr);
-  const w = rect.width, h = rect.height;
-
-  const padL = 16, padR = 16, padT = 16, padB = 32;
-  const plotW = w - padL - padR;
-  const plotH = h - padT - padB;
-
-  // Global time range across all series
-  let globalMinT = Infinity, globalMaxT = -Infinity;
-  seriesList.forEach(s => s.data.forEach(p => {
-    const t = p.date.getTime();
-    if (t < globalMinT) globalMinT = t;
-    if (t > globalMaxT) globalMaxT = t;
-  }));
-  const rangeT = globalMaxT - globalMinT || 1;
-  const toX = (t) => padL + ((t - globalMinT) / rangeT) * plotW;
-
-  ctx.clearRect(0, 0, w, h);
-
-  // Horizontal grid lines (no value labels — scales differ per series)
-  const nGrid = 5;
-  ctx.strokeStyle = '#2f3340';
-  ctx.lineWidth = 0.5;
-  for (let i = 0; i <= nGrid; i++) {
-    const y = padT + plotH * (i / nGrid);
-    ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(w - padR, y); ctx.stroke();
-  }
-
-  // X-axis date labels: pick evenly spaced dates from global range
-  ctx.font = '10px "JetBrains Mono", monospace';
-  ctx.fillStyle = '#636879';
-  ctx.textAlign = 'center';
-  const maxLabels = Math.floor(plotW / 60);
-  for (let i = 0; i <= maxLabels; i++) {
-    const t = globalMinT + rangeT * (i / maxLabels);
-    const x = toX(t);
-    const d = new Date(t);
-    const label = String(d.getDate()).padStart(2, '0') + '.' + String(d.getMonth() + 1).padStart(2, '0');
-    ctx.fillText(label, x, h - padB + 16);
-    ctx.strokeStyle = '#2f3340';
-    ctx.beginPath(); ctx.moveTo(x, h - padB); ctx.lineTo(x, h - padB + 4); ctx.stroke();
-  }
-
-  // Draw each series (normalized independently)
-  seriesList.forEach(s => {
-    if (s.data.length === 0) return;
-
-    const vals = s.data.map(p => p.value);
-    let minV = Math.min(...vals), maxV = Math.max(...vals);
-    if (minV === maxV) { minV -= 1; maxV += 1; }
-    const rv = maxV - minV;
-    minV -= rv * 0.05; maxV += rv * 0.05;
-    const toY = (v) => padT + plotH - ((v - minV) / (maxV - minV)) * plotH;
-
-    // Line
-    ctx.strokeStyle = s.color;
-    ctx.lineWidth = 2;
-    ctx.lineJoin = 'round'; ctx.lineCap = 'round';
-    ctx.beginPath();
-    s.data.forEach((p, i) => {
-      const x = toX(p.date.getTime()), y = toY(p.value);
-      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-    });
-    ctx.stroke();
-
-    // Fill under curve
-    ctx.globalAlpha = 0.06;
-    ctx.fillStyle = s.color;
-    ctx.beginPath();
-    s.data.forEach((p, i) => {
-      const x = toX(p.date.getTime()), y = toY(p.value);
-      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-    });
-    ctx.lineTo(toX(s.data[s.data.length - 1].date.getTime()), padT + plotH);
-    ctx.lineTo(toX(s.data[0].date.getTime()), padT + plotH);
-    ctx.closePath(); ctx.fill();
-    ctx.globalAlpha = 1;
-
-    // Data points
-    s.data.forEach(p => {
-      ctx.fillStyle = s.color;
-      ctx.beginPath();
-      ctx.arc(toX(p.date.getTime()), toY(p.value), 2.5, 0, Math.PI * 2);
-      ctx.fill();
-    });
-
-    // Last value annotation
-    const last = s.data[s.data.length - 1];
-    const lx = toX(last.date.getTime()), ly = toY(last.value);
-    ctx.fillStyle = s.light;
-    ctx.beginPath(); ctx.arc(lx, ly, 4.5, 0, Math.PI * 2); ctx.fill();
-    ctx.font = 'bold 11px "JetBrains Mono", monospace';
-    ctx.fillStyle = s.light;
-    ctx.textAlign = lx > w - 70 ? 'right' : 'left';
-    ctx.fillText(Math.round(last.value * 10) / 10 + ' ' + s.unit, lx + (lx > w - 70 ? -8 : 8), ly - 8);
-  });
 }
 
 // ============================================================================
