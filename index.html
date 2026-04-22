@@ -1354,7 +1354,6 @@ function cell(d, dd, ei) {
       inp.dataset.focusId = 'set-' + key + '-' + ei + '-' + si;
       inp.placeholder = 'S' + (si + 1);
       inp.value = ex.sets[si] || '';
-      if (isPast) { inp.readOnly = true; }
       // Save on every keystroke + full re-render (updates now line, mastery, etc.)
       const onEdit = () => {
         inp.value = normalizeNum(inp.value);
