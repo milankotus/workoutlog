@@ -33,7 +33,7 @@
       exercises: [                        // Master exercise list (shown in dropdowns)
         { name: "Horiz. Pullups",         // Display name
           rings: true,                    // Whether performed on gymnastic rings (⊙ badge)
-          sets: 3,                        // Number of sets to show (1-6, configurable in Manage panel)
+          sets: 3,                        // Number of sets to show (≥1, configurable in Manage panel)
           masteryReps: 0,                 // Reps-per-set goal to consider exercise "mastered" (0 = no goal)
           archived: false                 // Hidden from dropdowns but preserved in history
         }, ...
@@ -673,7 +673,7 @@ let weekStart = getMonday(new Date(today));
 
 /**
  * Returns the default state object used when no data exists in localStorage.
- * exercises[].sets = number of set input fields (1-6), NOT the set data.
+ * exercises[].sets = number of set input fields (≥1), NOT the set data.
  * The actual recorded set data lives in state.days[dateKey].exercises[].sets (array of strings).
  */
 function defaultState() {
@@ -1343,7 +1343,7 @@ function cell(d, dd, ei) {
     skippedLabel.textContent = 'SKIPPED';
     c.appendChild(skippedLabel);
   } else {
-    // Number of inputs determined by exercise's 'sets' config (1-6)
+    // Number of inputs determined by exercise's 'sets' config (≥1)
     const numSets = ex.name ? getSetCount(ex.name) : 3;
     ex.sets = normalizeSets(ex.sets, ex.name);
 
@@ -1537,7 +1537,7 @@ function renderManage() {
 
     const plus = document.createElement('button'); plus.textContent = '+';
     plus.onclick = () => {
-      if (ex.sets < 6) { ex.sets++; save(); renderManage(); render(); }
+      ex.sets++; save(); renderManage(); render();
     };
     cfg.appendChild(plus);
 
