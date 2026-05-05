@@ -90,6 +90,11 @@
     Manage modal    — Footer button. Add/remove/rename/archive exercises, configure sets, toggle rings.
                        Click exercise name to rename inline — propagates to all history,
                        current week, and weekly plan template.
+    History modal   — Click 📈 on any exercise (in a grid cell, manage list, or archived list)
+                       to see progression: best total + date, last session + Δ, 5-session avg vs
+                       prior 5, mastery streak, sparkline of total reps over time, and a
+                       chronological session table. Skipped sessions appear in the table but are
+                       excluded from stats and sparkline.
 
   KEY FUNCTIONS:
     render()               — Rebuilds the entire week grid.
@@ -417,6 +422,94 @@
   }
   .archived-list .manage-item .restore-btn:hover { color: var(--green); }
 
+  /* === EXERCISE HISTORY MODAL — opened by clicking 📈 on any exercise === */
+  /* Shared 📈 button used in: cell action row, manage list rows, archived list rows. */
+  .history-btn {
+    background: none; border: 1px solid var(--border); color: var(--text3);
+    cursor: pointer; font-size: 11px; padding: 1px 6px; border-radius: 4px;
+    transition: all .15s; font-family: inherit;
+  }
+  .history-btn:hover { color: var(--accent2); border-color: var(--accent); }
+
+  /* Action row inside an exercise cell — holds Skip + 📈 side by side. */
+  .cell-btn-row { display: flex; gap: 4px; align-items: stretch; margin-bottom: 3px; }
+  .cell-btn-row .skip-btn { flex: 1; margin: 0; }
+  .cell-btn-row .history-btn { flex-shrink: 0; }
+
+  .history-overlay {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,.6);
+    z-index: 110; align-items: center; justify-content: center;
+  }
+  .history-overlay.open { display: flex; }
+  .history-box {
+    background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 20px; width: 580px; max-width: 95vw; max-height: 85vh; overflow-y: auto;
+  }
+  .history-header {
+    display: flex; align-items: baseline; gap: 10px; margin-bottom: 14px;
+    padding-bottom: 10px; border-bottom: 1px solid var(--border);
+  }
+  .history-header h3 { font-size: 15px; font-weight: 600; color: var(--accent2); margin: 0; }
+  .history-header .ring-badge { font-size: 10px; }
+  .history-header .session-count { font-size: 11px; color: var(--text3); margin-left: auto; }
+
+  /* Summary tiles (best total / last / Δ5 avg / mastery streak). */
+  .history-stats {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 14px;
+  }
+  .stat-tile {
+    background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius-sm);
+    padding: 8px 6px; text-align: center;
+  }
+  .stat-tile .stat-label {
+    font-size: 9px; color: var(--text3); text-transform: uppercase; letter-spacing: .5px;
+  }
+  .stat-tile .stat-value {
+    font-family: 'JetBrains Mono', monospace; font-size: 16px; color: var(--text); margin-top: 4px;
+  }
+  .stat-tile .stat-value.pos { color: var(--green); }
+  .stat-tile .stat-value.neg { color: var(--red); }
+  .stat-tile .stat-sub { font-size: 9px; color: var(--text2); margin-top: 2px; }
+
+  /* Sparkline of total reps per session (skipped sessions excluded). */
+  .history-spark {
+    background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius-sm);
+    padding: 8px; margin-bottom: 14px;
+  }
+  .history-spark svg { width: 100%; height: 60px; display: block; }
+  .history-spark .spark-empty { font-size: 11px; color: var(--text3); text-align: center; padding: 14px 0; }
+
+  /* Chronological table — newest first; best row highlighted, skipped rows faded. */
+  .history-table { display: flex; flex-direction: column; gap: 2px; }
+  .history-row {
+    display: flex; align-items: center; gap: 8px; padding: 5px 8px;
+    background: var(--bg3); border-radius: var(--radius-sm);
+    font-size: 12px; font-family: 'JetBrains Mono', monospace;
+  }
+  .history-row.best { border: 1px solid var(--green); background: rgba(0,184,148,.06); }
+  .history-row.skipped { opacity: 0.45; }
+  .history-row .h-date { color: var(--text2); flex-shrink: 0; min-width: 90px; }
+  .history-row .h-dow {
+    color: var(--text3); font-size: 10px; flex-shrink: 0; min-width: 30px;
+    font-family: 'DM Sans', sans-serif;
+  }
+  .history-row .h-sets { color: var(--text); flex: 1; }
+  .history-row .h-total { color: var(--accent2); font-weight: 600; margin-left: auto; }
+  .history-row.skipped .h-sets { font-style: italic; color: var(--text3); }
+
+  .history-empty {
+    text-align: center; color: var(--text3); font-size: 12px; padding: 20px;
+  }
+
+  /* Mobile tweaks for the history modal. */
+  @media (max-width: 600px) {
+    .history-stats { grid-template-columns: repeat(2, 1fr); }
+    .stat-tile .stat-value { font-size: 14px; }
+    .history-row .h-date { min-width: 78px; font-size: 11px; }
+    .history-row .h-dow { min-width: 26px; }
+    .history-box { padding: 14px; }
+  }
+
   /* === CARDIO SUB-ELEMENTS — weight/waist input rows inside the tracking cell === */
   .cardio-row {
     display: flex; align-items: center; gap: 4px;
@@ -624,6 +717,12 @@
     </div>
     <button class="manage-close" onclick="closeManage()">Close</button>
   </div>
+</div>
+
+<!-- === EXERCISE HISTORY MODAL — opened from any 📈 button (cell, manage list, archived list) === -->
+<!-- Inner content rebuilt by renderHistory(name) every time it opens. -->
+<div class="history-overlay" id="historyOverlay" onclick="if(event.target===this)closeHistory()">
+  <div class="history-box" id="historyBox"></div>
 </div>
 
 <script>
@@ -1266,8 +1365,12 @@ function cell(d, dd, ei) {
   };
   c.appendChild(sel);
 
-  // === SKIP BUTTON (any day with an exercise selected) ===
+  // === ACTION ROW (Skip + 📈 history) — only when an exercise is selected ===
   if (ex.name) {
+    const btnRow = document.createElement('div');
+    btnRow.className = 'cell-btn-row';
+
+    // Skip toggle (existing behavior preserved).
     const skipBtn = document.createElement('button');
     skipBtn.className = 'skip-btn' + (ex.skipped ? ' active' : '');
     skipBtn.textContent = ex.skipped ? '↩ Undo skip' : 'Skip';
@@ -1276,7 +1379,17 @@ function cell(d, dd, ei) {
       if (!dd.exercises[ei].skipped) delete dd.exercises[ei].skipped;
       save(); render();
     };
-    c.appendChild(skipBtn);
+    btnRow.appendChild(skipBtn);
+
+    // History button — opens progression modal for this exercise (matched by name).
+    const histBtn = document.createElement('button');
+    histBtn.className = 'history-btn';
+    histBtn.textContent = '\u{1F4C8}';
+    histBtn.title = 'View progression';
+    histBtn.onclick = () => openHistory(ex.name);
+    btnRow.appendChild(histBtn);
+
+    c.appendChild(btnRow);
   }
 
   // === HISTORY LINES (-2, -1, now) ===
@@ -1566,6 +1679,14 @@ function renderManage() {
     mcfg.appendChild(mInput);
     item.appendChild(mcfg);
 
+    // History button — opens progression modal for this exercise.
+    const hist = document.createElement('button');
+    hist.className = 'history-btn';
+    hist.textContent = '\u{1F4C8}';
+    hist.title = 'View progression';
+    hist.onclick = () => openHistory(ex.name);
+    item.appendChild(hist);
+
     // Archive button
     const arch = document.createElement('button'); arch.className = 'archive-btn'; arch.textContent = '\u{1F4E6}';
     arch.title = 'Archive';
@@ -1631,6 +1752,14 @@ function renderArchivedList() {
     info.textContent = (ex.sets || 3) + ' sets' + (ex.masteryReps ? ' · goal ' + ex.masteryReps : '');
     item.appendChild(info);
 
+    // History button — archived exercises still have logged history worth viewing.
+    const hist = document.createElement('button');
+    hist.className = 'history-btn';
+    hist.textContent = '\u{1F4C8}';
+    hist.title = 'View progression';
+    hist.onclick = () => openHistory(ex.name);
+    item.appendChild(hist);
+
     // Restore button
     const restore = document.createElement('button'); restore.className = 'restore-btn'; restore.textContent = 'Restore';
     restore.onclick = () => {
@@ -1662,6 +1791,231 @@ function toggleArchivedList() {
   const container = document.getElementById('archivedList');
   container.style.display = container.style.display === 'none' ? '' : 'none';
   renderArchivedList();
+}
+
+// ============================================================================
+// EXERCISE PROGRESSION HISTORY
+// ----------------------------------------------------------------------------
+// Modal that shows every logged session of one exercise so you can see if
+// progress is being made. Triggered by the 📈 button in: each grid cell, the
+// active manage list, and the archived list. Matching is by exercise name —
+// safe because renameExercise() rewrites the name across all stored days.
+// ============================================================================
+
+/** Collect every logged session of `name` across state.days.
+ *  Returns newest-first array of { date, dow, sets, skipped, total }.
+ *  total = sum of numeric set values (0 if all empty). */
+function getExerciseHistory(name) {
+  const out = [];
+  for (const date of Object.keys(state.days)) {
+    const dd = state.days[date];
+    if (!dd || !dd.exercises) continue;
+    const e = dd.exercises.find(x => x.name === name);
+    if (!e) continue;
+    const sets = e.sets || [];
+    // A session counts only if at least one set has a value or it's marked skipped.
+    if (!e.skipped && !sets.some(v => v)) continue;
+    const total = sets.reduce((a, v) => a + (parseInt(v) || 0), 0);
+    // Parse date as local (avoid UTC shift) so day-of-week matches what's shown in the grid.
+    const parts = date.split('-');
+    const dt = new Date(+parts[0], +parts[1] - 1, +parts[2]);
+    out.push({ date, dow: DAY_SHORT[dt.getDay()], sets, skipped: !!e.skipped, total });
+  }
+  // Sort newest-first by ISO date string (lexicographic == chronological for YYYY-MM-DD).
+  out.sort((a, b) => b.date.localeCompare(a.date));
+  return out;
+}
+
+/** Open the history modal for exercise `name`. */
+function openHistory(name) {
+  if (!name) return;
+  renderHistory(name);
+  document.getElementById('historyOverlay').classList.add('open');
+}
+
+function closeHistory() {
+  document.getElementById('historyOverlay').classList.remove('open');
+}
+
+/** Build a small inline SVG sparkline of total reps per session.
+ *  `points` is oldest-first (so the line reads left→right as time progresses).
+ *  Skipped sessions are NOT passed in — caller filters them out. */
+function buildSparkline(points) {
+  const W = 280, H = 60, padX = 6, padY = 8;
+  if (points.length === 0) {
+    return '<div class="spark-empty">No completed sessions yet.</div>';
+  }
+  // Single point — just draw one dot in the center.
+  if (points.length === 1) {
+    return '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none">' +
+      '<circle cx="' + (W / 2) + '" cy="' + (H / 2) + '" r="3" fill="var(--accent2)"/>' +
+      '</svg>';
+  }
+  const totals = points.map(p => p.total);
+  let lo = Math.min.apply(null, totals);
+  let hi = Math.max.apply(null, totals);
+  // Avoid a divide-by-zero when every session has the same total — flat line in middle.
+  if (hi === lo) { lo = hi - 1; hi = hi + 1; }
+  const xStep = (W - padX * 2) / (points.length - 1);
+  const yFor = v => padY + (1 - (v - lo) / (hi - lo)) * (H - padY * 2);
+  const xFor = i => padX + i * xStep;
+
+  // Path string for the trend line.
+  let d = '';
+  for (let i = 0; i < points.length; i++) {
+    d += (i === 0 ? 'M' : 'L') + xFor(i).toFixed(1) + ',' + yFor(points[i].total).toFixed(1) + ' ';
+  }
+
+  // Personal-best index (first occurrence of the max) and most-recent index (last point).
+  const bestIdx = totals.indexOf(Math.max.apply(null, totals));
+  const lastIdx = points.length - 1;
+
+  let svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none">';
+  svg += '<path d="' + d + '" fill="none" stroke="var(--text2)" stroke-width="1.5" stroke-linejoin="round"/>';
+  // Faint dots for every session.
+  for (let i = 0; i < points.length; i++) {
+    if (i === bestIdx || i === lastIdx) continue;
+    svg += '<circle cx="' + xFor(i).toFixed(1) + '" cy="' + yFor(points[i].total).toFixed(1) + '" r="1.5" fill="var(--text3)"/>';
+  }
+  // Highlighted dots: best (green), most recent (accent purple). If they're the same point, accent wins (drawn last).
+  svg += '<circle cx="' + xFor(bestIdx).toFixed(1) + '" cy="' + yFor(points[bestIdx].total).toFixed(1) + '" r="3" fill="var(--green)"/>';
+  svg += '<circle cx="' + xFor(lastIdx).toFixed(1) + '" cy="' + yFor(points[lastIdx].total).toFixed(1) + '" r="3" fill="var(--accent2)"/>';
+  svg += '</svg>';
+  return svg;
+}
+
+/** Render the inside of #historyBox for a given exercise name. */
+function renderHistory(name) {
+  const box = document.getElementById('historyBox');
+  const ex = state.exercises.find(e => e.name === name);
+  const hist = getExerciseHistory(name);
+  // Completed (non-skipped) sessions only — used for stats and sparkline.
+  const done = hist.filter(h => !h.skipped && h.total > 0);
+
+  // Format an ISO date as "Mon DD, YYYY" for header display.
+  const fmtDate = (iso) => {
+    const p = iso.split('-');
+    const dt = new Date(+p[0], +p[1] - 1, +p[2]);
+    return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  };
+
+  // === Header ===
+  let html = '<div class="history-header">';
+  html += '<h3>' + escapeHtml(name) + '</h3>';
+  if (ex && ex.rings) html += '<span class="ring-badge">⊙</span>';
+  html += '<span class="session-count">' + hist.length + ' session' + (hist.length === 1 ? '' : 's') + '</span>';
+  html += '</div>';
+
+  // === Summary tiles — only meaningful if we have completed sessions ===
+  if (done.length > 0) {
+    // Best total (newest occurrence wins ties since `hist` is newest-first; reverse done to match).
+    const oldestFirst = done.slice().reverse();
+    const best = oldestFirst.reduce((a, h) => h.total > a.total ? h : a, oldestFirst[0]);
+
+    // Last session + delta vs prior session.
+    const last = done[0];
+    const prev = done[1] || null;
+    const lastDelta = prev ? last.total - prev.total : null;
+
+    // 5-session avg vs previous-5 avg (mirrors getRecent5Avg semantics, but on the full history list).
+    const recent5 = done.slice(0, 5).map(h => h.total);
+    const prior5 = done.slice(5, 10).map(h => h.total);
+    const avg = arr => arr.reduce((a, v) => a + v, 0) / arr.length;
+    const avgRecent = recent5.length ? avg(recent5) : null;
+    const avgPrior = prior5.length ? avg(prior5) : null;
+    const avgDelta = (avgRecent !== null && avgPrior !== null) ? (avgRecent - avgPrior) : null;
+
+    // Mastery streak — only if a goal is set on the exercise.
+    let streakHtml = '';
+    if (ex && ex.masteryReps && ex.masteryReps > 0) {
+      const numSets = ex.sets || 3;
+      const streak = getMasteryStreak(name, ex.masteryReps, numSets, today);
+      streakHtml =
+        '<div class="stat-tile">' +
+          '<div class="stat-label">Streak</div>' +
+          '<div class="stat-value' + (streak > 0 ? ' pos' : '') + '">' + streak + '</div>' +
+          '<div class="stat-sub">goal ' + ex.masteryReps + '×' + numSets + '</div>' +
+        '</div>';
+    } else {
+      streakHtml =
+        '<div class="stat-tile">' +
+          '<div class="stat-label">Streak</div>' +
+          '<div class="stat-value" style="color:var(--text3)">—</div>' +
+          '<div class="stat-sub">no goal set</div>' +
+        '</div>';
+    }
+
+    html += '<div class="history-stats">';
+    html +=
+      '<div class="stat-tile">' +
+        '<div class="stat-label">Best</div>' +
+        '<div class="stat-value pos">' + best.total + '</div>' +
+        '<div class="stat-sub">' + fmtDate(best.date) + '</div>' +
+      '</div>';
+    html +=
+      '<div class="stat-tile">' +
+        '<div class="stat-label">Last</div>' +
+        '<div class="stat-value">' + last.total + '</div>' +
+        '<div class="stat-sub">' +
+          (lastDelta === null ? '—' :
+            (lastDelta > 0 ? '<span style="color:var(--green)">+' + lastDelta + '</span>' :
+             lastDelta < 0 ? '<span style="color:var(--red)">' + lastDelta + '</span>' :
+                              '<span style="color:var(--text3)">±0</span>') + ' vs prev') +
+        '</div>' +
+      '</div>';
+    html +=
+      '<div class="stat-tile">' +
+        '<div class="stat-label">Avg-5</div>' +
+        '<div class="stat-value' + (avgDelta === null ? '' : (avgDelta > 0 ? ' pos' : (avgDelta < 0 ? ' neg' : ''))) + '">' +
+          (avgRecent === null ? '—' : avgRecent.toFixed(1)) +
+        '</div>' +
+        '<div class="stat-sub">' +
+          (avgDelta === null ? 'need 6+ sessions' :
+            (avgDelta > 0 ? '+' + avgDelta.toFixed(1) :
+             avgDelta < 0 ? avgDelta.toFixed(1) : '±0') + ' vs prior 5') +
+        '</div>' +
+      '</div>';
+    html += streakHtml;
+    html += '</div>';
+
+    // === Sparkline (oldest → newest, skipped already excluded) ===
+    html += '<div class="history-spark">' + buildSparkline(oldestFirst) + '</div>';
+  }
+
+  // === Chronological table ===
+  if (hist.length === 0) {
+    html += '<div class="history-empty">No sessions logged yet for this exercise.</div>';
+  } else {
+    // Find best total again for the row highlight (matches the tile).
+    const bestTotal = done.length ? Math.max.apply(null, done.map(h => h.total)) : -1;
+    let bestMarked = false;  // only highlight one row even if multiple sessions tie
+    html += '<div class="history-table">';
+    for (const h of hist) {
+      const isBest = !h.skipped && h.total === bestTotal && !bestMarked;
+      if (isBest) bestMarked = true;
+      const cls = 'history-row' + (h.skipped ? ' skipped' : '') + (isBest ? ' best' : '');
+      const setsTxt = h.skipped ? 'skipped' : (fmtSets(h.sets) || '—');
+      html += '<div class="' + cls + '">';
+      html += '<span class="h-date">' + h.date + '</span>';
+      html += '<span class="h-dow">' + h.dow + '</span>';
+      html += '<span class="h-sets">' + escapeHtml(setsTxt) + '</span>';
+      if (!h.skipped && h.total > 0 && h.sets.length > 1) {
+        html += '<span class="h-total">' + h.total + '</span>';
+      }
+      html += '</div>';
+    }
+    html += '</div>';
+  }
+
+  // Close button.
+  html += '<button class="manage-close" onclick="closeHistory()" style="margin-top:14px">Close</button>';
+
+  box.innerHTML = html;
+}
+
+/** Minimal HTML escape — exercise names are user input and could contain &, <, > etc. */
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
 }
 
 /** Add a new exercise from the input fields in the manage modal */
