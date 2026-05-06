@@ -46,7 +46,11 @@
           exercises: [                    // Exercises logged that day (up to 8)
             { name: "Horiz. Pullups",     // Must match a name from the exercises[] array
               sets: ["26", "23", "20"],   // Array of string values, one per set
-              skipped: true               // Optional: marks exercise as skipped (not done that day)
+              skipped: true,              // Optional: marks exercise as skipped (not done that day)
+              ignored: true               // Optional: session has data but is excluded from
+                                          //   progression stats (e.g. wrong form). Toggle from the
+                                          //   📈 progression modal. Treated as transparent — does
+                                          //   not break mastery streak, not in -1/-2/avg-5/best/last.
             }, ...
           ],
           weight: "85",                   // Body weight in kg
@@ -94,7 +98,9 @@
                        to see progression: best total + date, last session + Δ, 5-session avg vs
                        prior 5, mastery streak, sparkline of total reps over time, and a
                        chronological session table. Skipped sessions appear in the table but are
-                       excluded from stats and sparkline.
+                       excluded from stats and sparkline. Each session row has a ⊘ button to
+                       mark it "ignored" (e.g. wrong form) — ignored sessions stay visible but
+                       are excluded from all stats, sparkline, and the day-grid -1/-2/Δ5 lines.
 
   KEY FUNCTIONS:
     render()               — Rebuilds the entire week grid.
@@ -488,6 +494,11 @@
   }
   .history-row.best { border: 1px solid var(--green); background: rgba(0,184,148,.06); }
   .history-row.skipped { opacity: 0.45; }
+  /* Ignored = excluded from progression stats. Visually muted with strike-through reps,
+     but still readable so the user can see what they chose to discount. */
+  .history-row.ignored { opacity: 0.55; background: rgba(225,112,85,.06); }
+  .history-row.ignored .h-sets,
+  .history-row.ignored .h-total { text-decoration: line-through; color: var(--text3); }
   .history-row .h-date { color: var(--text2); flex-shrink: 0; min-width: 90px; }
   .history-row .h-dow {
     color: var(--text3); font-size: 10px; flex-shrink: 0; min-width: 30px;
@@ -496,6 +507,20 @@
   .history-row .h-sets { color: var(--text); flex: 1; }
   .history-row .h-total { color: var(--accent2); font-weight: 600; margin-left: auto; }
   .history-row.skipped .h-sets { font-style: italic; color: var(--text3); }
+  /* Per-row toggle: ⊘ to ignore a session, ↩ to restore it.
+     Sits at the row's right edge after the total column. */
+  .history-row .h-ignore {
+    flex-shrink: 0; margin-left: 6px;
+    background: transparent; border: 1px solid var(--border);
+    color: var(--text3); cursor: pointer;
+    width: 24px; height: 24px; border-radius: var(--radius-sm);
+    font-size: 13px; line-height: 1;
+    display: inline-flex; align-items: center; justify-content: center;
+    transition: color .12s, border-color .12s, background .12s;
+  }
+  .history-row .h-ignore:hover { color: var(--red); border-color: var(--red); }
+  .history-row .h-ignore.on { color: var(--orange); border-color: var(--orange); }
+  .history-row .h-ignore.on:hover { color: var(--green); border-color: var(--green); }
 
   .history-empty {
     text-align: center; color: var(--text3); font-size: 12px; padding: 20px;
@@ -1094,7 +1119,7 @@ function getRecentSets(dateKey, name, n) {
     if (!day || !day.exercises) continue;
     for (var ei = 0; ei < day.exercises.length; ei++) {
       var ex = day.exercises[ei];
-      if (ex.name !== name || ex.skipped || !ex.sets || !ex.sets.some(function(s) { return s; })) continue;
+      if (ex.name !== name || ex.skipped || ex.ignored || !ex.sets || !ex.sets.some(function(s) { return s; })) continue;
       results.push(ex.sets);
       break;
     }
@@ -1105,6 +1130,7 @@ function getRecentSets(dateKey, name, n) {
 /** Average of the per-session set sums for the last 5 days the exercise was scheduled
  *  before `dateKey`. Skipped days count toward the 5-day window but are excluded from
  *  the average (so a single skip narrows the sample to 4, two skips to 3, etc).
+ *  Ignored sessions are fully transparent — they don't count toward the window at all.
  *  Unfilled set values count as 0. Returns null if no usable history. */
 function getRecent5Avg(dateKey, name) {
   var dates = Object.keys(state.days).filter(function(k) { return k < dateKey; }).sort().reverse();
@@ -1118,6 +1144,8 @@ function getRecent5Avg(dateKey, name) {
       if (day.exercises[ei].name === name) { ex = day.exercises[ei]; break; }
     }
     if (!ex) continue;
+    // Ignored = invisible (do not consume a window slot)
+    if (ex.ignored) continue;
     scheduled++;
     if (ex.skipped) continue;
     var sum = (ex.sets || []).reduce(function(a, v) { return a + (parseInt(v) || 0); }, 0);
@@ -1156,8 +1184,8 @@ function getMasteryStreak(exName, goal, numSets, upToDate) {
     if (!dd || !dd.exercises) continue;
     const ex = dd.exercises.find(e => e.name === exName);
     if (!ex) continue;
-    // Skipped exercises are transparent — they never break the streak
-    if (ex.skipped) continue;
+    // Skipped or ignored exercises are transparent — they never break the streak
+    if (ex.skipped || ex.ignored) continue;
     if (!ex.sets || !ex.sets.some(s => s)) continue;
     // Real session — check if all sets meet goal
     const allMet = ex.sets.slice(0, numSets).every(s => s && parseInt(s) >= goal);
@@ -1803,8 +1831,10 @@ function toggleArchivedList() {
 // ============================================================================
 
 /** Collect every logged session of `name` across state.days.
- *  Returns newest-first array of { date, dow, sets, skipped, total }.
- *  total = sum of numeric set values (0 if all empty). */
+ *  Returns newest-first array of { date, dow, sets, skipped, ignored, total }.
+ *  total = sum of numeric set values (0 if all empty).
+ *  Ignored sessions remain in the list (visible in the table) but the renderer
+ *  excludes them from stats/sparkline. */
 function getExerciseHistory(name) {
   const out = [];
   for (const date of Object.keys(state.days)) {
@@ -1819,7 +1849,7 @@ function getExerciseHistory(name) {
     // Parse date as local (avoid UTC shift) so day-of-week matches what's shown in the grid.
     const parts = date.split('-');
     const dt = new Date(+parts[0], +parts[1] - 1, +parts[2]);
-    out.push({ date, dow: DAY_SHORT[dt.getDay()], sets, skipped: !!e.skipped, total });
+    out.push({ date, dow: DAY_SHORT[dt.getDay()], sets, skipped: !!e.skipped, ignored: !!e.ignored, total });
   }
   // Sort newest-first by ISO date string (lexicographic == chronological for YYYY-MM-DD).
   out.sort((a, b) => b.date.localeCompare(a.date));
@@ -1835,6 +1865,21 @@ function openHistory(name) {
 
 function closeHistory() {
   document.getElementById('historyOverlay').classList.remove('open');
+}
+
+/** Toggle the `ignored` flag on one session of `name` at `date`.
+ *  Ignored sessions remain in the history table but are excluded from
+ *  Best/Last/Avg-5/Streak/sparkline, and from -1/-2/Δ5 in the day grid.
+ *  Used to discount sessions performed with bad form etc. */
+function toggleIgnoreSession(name, date) {
+  const dd = state.days[date];
+  if (!dd || !dd.exercises) return;
+  const e = dd.exercises.find(x => x.name === name);
+  if (!e) return;
+  if (e.ignored) delete e.ignored; else e.ignored = true;
+  save();
+  renderHistory(name);  // refresh modal (stats + row styles)
+  render();             // refresh week grid (-1/-2/Δ5 may have shifted)
 }
 
 /** Build a small inline SVG sparkline of total reps per session.
@@ -1889,8 +1934,8 @@ function renderHistory(name) {
   const box = document.getElementById('historyBox');
   const ex = state.exercises.find(e => e.name === name);
   const hist = getExerciseHistory(name);
-  // Completed (non-skipped) sessions only — used for stats and sparkline.
-  const done = hist.filter(h => !h.skipped && h.total > 0);
+  // Completed sessions used for stats and sparkline — exclude both skipped and ignored.
+  const done = hist.filter(h => !h.skipped && !h.ignored && h.total > 0);
 
   // Format an ISO date as "Mon DD, YYYY" for header display.
   const fmtDate = (iso) => {
@@ -1987,13 +2032,19 @@ function renderHistory(name) {
     html += '<div class="history-empty">No sessions logged yet for this exercise.</div>';
   } else {
     // Find best total again for the row highlight (matches the tile).
+    // Only non-skipped AND non-ignored sessions are eligible for the "best" badge.
     const bestTotal = done.length ? Math.max.apply(null, done.map(h => h.total)) : -1;
     let bestMarked = false;  // only highlight one row even if multiple sessions tie
+    // Pre-encode the exercise name for safe inclusion in inline onclick handlers.
+    const nameJson = JSON.stringify(name);
     html += '<div class="history-table">';
     for (const h of hist) {
-      const isBest = !h.skipped && h.total === bestTotal && !bestMarked;
+      const isBest = !h.skipped && !h.ignored && h.total === bestTotal && !bestMarked;
       if (isBest) bestMarked = true;
-      const cls = 'history-row' + (h.skipped ? ' skipped' : '') + (isBest ? ' best' : '');
+      const cls = 'history-row'
+        + (h.skipped ? ' skipped' : '')
+        + (h.ignored ? ' ignored' : '')
+        + (isBest ? ' best' : '');
       const setsTxt = h.skipped ? 'skipped' : (fmtSets(h.sets) || '—');
       html += '<div class="' + cls + '">';
       html += '<span class="h-date">' + h.date + '</span>';
@@ -2001,6 +2052,17 @@ function renderHistory(name) {
       html += '<span class="h-sets">' + escapeHtml(setsTxt) + '</span>';
       if (!h.skipped && h.total > 0 && h.sets.length > 1) {
         html += '<span class="h-total">' + h.total + '</span>';
+      }
+      // Per-row "ignore in progression" toggle. Skipped rows have no data to ignore — no button.
+      // Ignored rows show ↩ to restore; normal rows show ⊘ to ignore.
+      if (!h.skipped) {
+        const isIg = !!h.ignored;
+        const btnTitle = isIg ? 'Include in progression' : 'Ignore from progression (e.g. wrong form)';
+        const btnGlyph = isIg ? '↩' : '⊘';
+        html += '<button class="h-ignore' + (isIg ? ' on' : '') + '"'
+              + ' title="' + btnTitle + '"'
+              + ' onclick="toggleIgnoreSession(' + nameJson + ', \'' + h.date + '\')">'
+              + btnGlyph + '</button>';
       }
       html += '</div>';
     }
