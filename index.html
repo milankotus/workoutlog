@@ -2035,8 +2035,12 @@ function renderHistory(name) {
     // Only non-skipped AND non-ignored sessions are eligible for the "best" badge.
     const bestTotal = done.length ? Math.max.apply(null, done.map(h => h.total)) : -1;
     let bestMarked = false;  // only highlight one row even if multiple sessions tie
-    // Pre-encode the exercise name for safe inclusion in inline onclick handlers.
-    const nameJson = JSON.stringify(name);
+    // Pre-encode the exercise name for safe inclusion in an inline onclick handler.
+    // The attribute is wrapped in double quotes, so we JSON-stringify (handles JS escaping
+    // like apostrophes/backslashes) then HTML-escape the resulting "..." so the inner
+    // double quotes don't close the attribute. Result lands inside the attribute as
+    // &quot;Name&quot; which the browser unescapes back to "Name" before evaluating.
+    const nameJson = escapeHtml(JSON.stringify(name));
     html += '<div class="history-table">';
     for (const h of hist) {
       const isBest = !h.skipped && !h.ignored && h.total === bestTotal && !bestMarked;
