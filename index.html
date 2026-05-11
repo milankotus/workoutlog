@@ -553,6 +553,8 @@
   .cardio-avg { font-size: 9px; color: var(--accent); flex-shrink: 0; font-family: 'JetBrains Mono', monospace; margin-left: 2px; }
   /* Week-over-week delta: avg(last 7d) − avg(prior 7d). Neutral color — up/down not judged good/bad. */
   .cardio-delta { font-size: 9px; color: var(--text2); flex-shrink: 0; font-family: 'JetBrains Mono', monospace; margin-left: 2px; }
+  /* Compact 📈 button inside cardio rows — opens body-measurement history modal. */
+  .cardio-row .history-btn { font-size: 10px; padding: 0 4px; flex-shrink: 0; margin-left: 2px; line-height: 1.4; }
 
   /* === TRACKING CELL — holds weight + waist rows for a day === */
   .tracking-cell {
@@ -1275,7 +1277,10 @@ function render() {
     const weightDelta = weekDelta('weight', cardioKey);
     const weightDeltaSpan = document.createElement('span'); weightDeltaSpan.className = 'cardio-delta';
     weightDeltaSpan.textContent = weightDelta === null ? 'Δ-' : 'Δ' + (weightDelta >= 0 ? '+' : '−') + Math.abs(weightDelta).toFixed(1);
-    weightRow.appendChild(weightIcon); weightRow.appendChild(weightInp); weightRow.appendChild(weightUnit); weightRow.appendChild(weightAvgSpan); weightRow.appendChild(weightDeltaSpan);
+    const weightHistBtn = document.createElement('button'); weightHistBtn.className = 'history-btn';
+    weightHistBtn.textContent = '\u{1F4C8}'; weightHistBtn.title = 'Weight history';
+    weightHistBtn.onclick = () => openBodyHistory('weight', 'Weight', 'kg');
+    weightRow.appendChild(weightIcon); weightRow.appendChild(weightInp); weightRow.appendChild(weightUnit); weightRow.appendChild(weightAvgSpan); weightRow.appendChild(weightDeltaSpan); weightRow.appendChild(weightHistBtn);
     trackCell.appendChild(weightRow);
 
     // Waist row
@@ -1293,7 +1298,10 @@ function render() {
     const waistDelta = weekDelta('waist', cardioKey);
     const waistDeltaSpan = document.createElement('span'); waistDeltaSpan.className = 'cardio-delta';
     waistDeltaSpan.textContent = waistDelta === null ? 'Δ-' : 'Δ' + (waistDelta >= 0 ? '+' : '−') + Math.abs(waistDelta).toFixed(1);
-    waistRow.appendChild(waistIcon); waistRow.appendChild(waistInp); waistRow.appendChild(waistUnit); waistRow.appendChild(waistAvgSpan); waistRow.appendChild(waistDeltaSpan);
+    const waistHistBtn = document.createElement('button'); waistHistBtn.className = 'history-btn';
+    waistHistBtn.textContent = '\u{1F4C8}'; waistHistBtn.title = 'Waist history';
+    waistHistBtn.onclick = () => openBodyHistory('waist', 'Waist', 'cm');
+    waistRow.appendChild(waistIcon); waistRow.appendChild(waistInp); waistRow.appendChild(waistUnit); waistRow.appendChild(waistAvgSpan); waistRow.appendChild(waistDeltaSpan); waistRow.appendChild(waistHistBtn);
     trackCell.appendChild(waistRow);
 
     row.appendChild(trackCell);
@@ -2076,6 +2084,128 @@ function renderHistory(name) {
   // Close button.
   html += '<button class="manage-close" onclick="closeHistory()" style="margin-top:14px">Close</button>';
 
+  box.innerHTML = html;
+}
+
+// ============================================================================
+// BODY MEASUREMENT HISTORY (weight / waist)
+// ----------------------------------------------------------------------------
+// Mirrors the exercise history modal but operates on a single numeric field
+// per day (state.days[date][metric]) instead of an exercise's set list.
+// Reuses #historyOverlay/#historyBox, closeHistory(), and buildSparkline().
+// ============================================================================
+
+/** Collect every day with a numeric value for `metric` ("weight"|"waist").
+ *  Returns newest-first array of { date, dow, value, total }.
+ *  `total` mirrors the exercise-history shape so buildSparkline can be reused. */
+function getBodyHistory(metric) {
+  const out = [];
+  for (const date of Object.keys(state.days)) {
+    const dd = state.days[date];
+    if (!dd) continue;
+    const raw = dd[metric];
+    if (raw === undefined || raw === null || raw === '') continue;
+    const v = parseFloat(raw);
+    if (isNaN(v)) continue;
+    const parts = date.split('-');
+    const dt = new Date(+parts[0], +parts[1] - 1, +parts[2]);
+    out.push({ date, dow: DAY_SHORT[dt.getDay()], value: v, total: v });
+  }
+  out.sort((a, b) => b.date.localeCompare(a.date));
+  return out;
+}
+
+function openBodyHistory(metric, label, unit) {
+  renderBodyHistory(metric, label, unit);
+  document.getElementById('historyOverlay').classList.add('open');
+}
+
+/** Render the inside of #historyBox for a body metric. */
+function renderBodyHistory(metric, label, unit) {
+  const box = document.getElementById('historyBox');
+  const hist = getBodyHistory(metric);
+
+  const fmtDate = (iso) => {
+    const p = iso.split('-');
+    const dt = new Date(+p[0], +p[1] - 1, +p[2]);
+    return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  };
+  const fmtVal = v => (Math.round(v * 10) / 10).toFixed(1);
+
+  let html = '<div class="history-header">';
+  html += '<h3>' + escapeHtml(label) + ' history</h3>';
+  html += '<span class="session-count">' + hist.length + ' entr' + (hist.length === 1 ? 'y' : 'ies') + '</span>';
+  html += '</div>';
+
+  if (hist.length > 0) {
+    const oldestFirst = hist.slice().reverse();
+    const values = hist.map(h => h.value);
+    const minV = Math.min.apply(null, values);
+    const maxV = Math.max.apply(null, values);
+    const minEntry = oldestFirst.find(h => h.value === minV);
+    const maxEntry = oldestFirst.find(h => h.value === maxV);
+
+    const last = hist[0];
+    const prev = hist[1] || null;
+    const lastDelta = prev ? (last.value - prev.value) : null;
+
+    // 7-day rolling average vs prior 7 days, anchored at the most recent entry's date.
+    const avg7Cur = avgRange(metric, last.date, 0, 7);
+    const avg7Prior = avgRange(metric, last.date, 7, 7);
+    const avg7Delta = (avg7Cur !== null && avg7Prior !== null) ? (avg7Cur - avg7Prior) : null;
+
+    const deltaSpan = (d) => {
+      if (d === null) return '—';
+      if (Math.abs(d) < 0.05) return '<span style="color:var(--text3)">±0</span>';
+      const sign = d > 0 ? '+' : '−';
+      return '<span style="color:var(--text2)">' + sign + fmtVal(Math.abs(d)) + '</span>';
+    };
+
+    html += '<div class="history-stats">';
+    html +=
+      '<div class="stat-tile">' +
+        '<div class="stat-label">Latest</div>' +
+        '<div class="stat-value">' + fmtVal(last.value) + '</div>' +
+        '<div class="stat-sub">' + deltaSpan(lastDelta) + ' ' + unit + '</div>' +
+      '</div>';
+    html +=
+      '<div class="stat-tile">' +
+        '<div class="stat-label">Min</div>' +
+        '<div class="stat-value">' + fmtVal(minV) + '</div>' +
+        '<div class="stat-sub">' + fmtDate(minEntry.date) + '</div>' +
+      '</div>';
+    html +=
+      '<div class="stat-tile">' +
+        '<div class="stat-label">Max</div>' +
+        '<div class="stat-value">' + fmtVal(maxV) + '</div>' +
+        '<div class="stat-sub">' + fmtDate(maxEntry.date) + '</div>' +
+      '</div>';
+    html +=
+      '<div class="stat-tile">' +
+        '<div class="stat-label">Avg-7</div>' +
+        '<div class="stat-value">' + (avg7Cur === null ? '—' : fmtVal(avg7Cur)) + '</div>' +
+        '<div class="stat-sub">' + (avg7Delta === null ? 'need 14d data' : deltaSpan(avg7Delta) + ' vs prior 7d') + '</div>' +
+      '</div>';
+    html += '</div>';
+
+    html += '<div class="history-spark">' + buildSparkline(oldestFirst) + '</div>';
+  }
+
+  if (hist.length === 0) {
+    html += '<div class="history-empty">No ' + escapeHtml(label.toLowerCase()) + ' entries logged yet.</div>';
+  } else {
+    html += '<div class="history-table">';
+    for (const h of hist) {
+      html += '<div class="history-row">';
+      html += '<span class="h-date">' + h.date + '</span>';
+      html += '<span class="h-dow">' + h.dow + '</span>';
+      html += '<span class="h-sets">' + fmtVal(h.value) + ' ' + escapeHtml(unit) + '</span>';
+      html += '</div>';
+    }
+    html += '</div>';
+  }
+
+  html += '<button class="manage-close" onclick="closeHistory()" style="margin-top:14px">Close</button>';
   box.innerHTML = html;
 }
 
