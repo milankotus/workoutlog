@@ -539,7 +539,8 @@
   .cardio-row {
     display: flex; align-items: center; gap: 4px;
   }
-  .cardio-icon { font-size: 11px; width: 16px; text-align: center; flex-shrink: 0; }
+  .cardio-icon { font-size: 11px; width: 16px; text-align: center; flex-shrink: 0; cursor: pointer; user-select: none; }
+  .cardio-icon:hover { filter: brightness(1.4); }
   .cardio-row input {
     width: 100%; font-family: 'JetBrains Mono', monospace; font-size: 11px;
     padding: 3px 4px; background: var(--bg3); border: 1px solid var(--border);
@@ -1265,6 +1266,8 @@ function render() {
     // Weight row
     const weightRow = document.createElement('div'); weightRow.className = 'cardio-row';
     const weightIcon = document.createElement('span'); weightIcon.className = 'cardio-icon'; weightIcon.textContent = '\u{2696}';
+    weightIcon.title = 'Weight history';
+    weightIcon.onclick = () => openBodyHistory('weight', 'Weight', 'kg');
     const weightInp = document.createElement('input'); weightInp.type = 'text'; weightInp.inputMode = 'decimal';
     weightInp.dataset.focusId = 'weight-' + cardioKey;
     weightInp.placeholder = 'kg'; weightInp.value = dayData.weight || '';
@@ -1277,15 +1280,14 @@ function render() {
     const weightDelta = weekDelta('weight', cardioKey);
     const weightDeltaSpan = document.createElement('span'); weightDeltaSpan.className = 'cardio-delta';
     weightDeltaSpan.textContent = weightDelta === null ? 'Δ-' : 'Δ' + (weightDelta >= 0 ? '+' : '−') + Math.abs(weightDelta).toFixed(1);
-    const weightHistBtn = document.createElement('button'); weightHistBtn.className = 'history-btn';
-    weightHistBtn.textContent = '\u{1F4C8}'; weightHistBtn.title = 'Weight history';
-    weightHistBtn.onclick = () => openBodyHistory('weight', 'Weight', 'kg');
-    weightRow.appendChild(weightIcon); weightRow.appendChild(weightInp); weightRow.appendChild(weightUnit); weightRow.appendChild(weightAvgSpan); weightRow.appendChild(weightDeltaSpan); weightRow.appendChild(weightHistBtn);
+    weightRow.appendChild(weightIcon); weightRow.appendChild(weightInp); weightRow.appendChild(weightUnit); weightRow.appendChild(weightAvgSpan); weightRow.appendChild(weightDeltaSpan);
     trackCell.appendChild(weightRow);
 
     // Waist row
     const waistRow = document.createElement('div'); waistRow.className = 'cardio-row';
     const waistIcon = document.createElement('span'); waistIcon.className = 'cardio-icon'; waistIcon.textContent = '\u{1F4CF}';
+    waistIcon.title = 'Waist history';
+    waistIcon.onclick = () => openBodyHistory('waist', 'Waist', 'cm');
     const waistInp = document.createElement('input'); waistInp.type = 'text'; waistInp.inputMode = 'decimal';
     waistInp.dataset.focusId = 'waist-' + cardioKey;
     waistInp.placeholder = 'cm'; waistInp.value = dayData.waist || '';
@@ -1298,10 +1300,7 @@ function render() {
     const waistDelta = weekDelta('waist', cardioKey);
     const waistDeltaSpan = document.createElement('span'); waistDeltaSpan.className = 'cardio-delta';
     waistDeltaSpan.textContent = waistDelta === null ? 'Δ-' : 'Δ' + (waistDelta >= 0 ? '+' : '−') + Math.abs(waistDelta).toFixed(1);
-    const waistHistBtn = document.createElement('button'); waistHistBtn.className = 'history-btn';
-    waistHistBtn.textContent = '\u{1F4C8}'; waistHistBtn.title = 'Waist history';
-    waistHistBtn.onclick = () => openBodyHistory('waist', 'Waist', 'cm');
-    waistRow.appendChild(waistIcon); waistRow.appendChild(waistInp); waistRow.appendChild(waistUnit); waistRow.appendChild(waistAvgSpan); waistRow.appendChild(waistDeltaSpan); waistRow.appendChild(waistHistBtn);
+    waistRow.appendChild(waistIcon); waistRow.appendChild(waistInp); waistRow.appendChild(waistUnit); waistRow.appendChild(waistAvgSpan); waistRow.appendChild(waistDeltaSpan);
     trackCell.appendChild(waistRow);
 
     row.appendChild(trackCell);
