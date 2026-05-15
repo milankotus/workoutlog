@@ -2245,7 +2245,7 @@ function exportCSV() {
   let maxS = 3;
   state.exercises.forEach(e => { if (e.sets > maxS) maxS = e.sets; });
 
-  let csv = 'Date;Day;Exercise;';
+  let csv = 'Date;Day;Exercise;Status;';
   for (let i = 1; i <= maxS; i++) csv += 'Set' + i + ';';
   csv = csv.slice(0, -1) + '\n';
 
@@ -2255,15 +2255,15 @@ function exportCSV() {
     const d = new Date(+p[0], +p[1]-1, +p[2]);
     (day.exercises || []).forEach(ex => {
       if (!ex.name || ex.skipped || !ex.sets || !ex.sets.some(s => s)) return;
-      let line = [k, DAY_NAMES[d.getDay()], ex.name];
+      let line = [k, DAY_NAMES[d.getDay()], ex.name, ex.ignored ? 'ignored' : ''];
       for (let i = 0; i < maxS; i++) line.push(ex.sets[i] || '');
       csv += line.join(';') + '\n';
     });
     if (day.weight) {
-      csv += [k, DAY_NAMES[d.getDay()], 'Weight', day.weight + ' kg'].join(';') + '\n';
+      csv += [k, DAY_NAMES[d.getDay()], 'Weight', '', day.weight + ' kg'].join(';') + '\n';
     }
     if (day.waist) {
-      csv += [k, DAY_NAMES[d.getDay()], 'Waist', day.waist + ' cm'].join(';') + '\n';
+      csv += [k, DAY_NAMES[d.getDay()], 'Waist', '', day.waist + ' cm'].join(';') + '\n';
     }
   });
   dl(new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' }),
