@@ -735,7 +735,7 @@
   </div>
 
   <div class="storage-info">
-    <span>●</span> All changes saved instantly · Cloud: <span id="syncStatus" style="font-weight:600">loading...</span>
+    <span>●</span> All changes saved instantly · Cloud: <span id="syncStatus" style="font-weight:600;cursor:pointer" title="Click to set or change the sync PIN" onclick="openPinModal()">loading...</span>
   </div>
 
   <!-- Hidden file picker for import -->
@@ -764,6 +764,21 @@
 <!-- Inner content rebuilt by renderHistory(name) every time it opens. -->
 <div class="history-overlay" id="historyOverlay" onclick="if(event.target===this)closeHistory()">
   <div class="history-box" id="historyBox"></div>
+</div>
+
+<!-- === SYNC PIN MODAL — in-page replacement for prompt() (browsers block prompt() after a dismissal) === -->
+<div class="manage-overlay" id="pinOverlay" onclick="if(event.target===this)closePinModal()">
+  <div class="manage-box" style="width:340px;max-width:90vw;">
+    <h3>Cloud sync PIN</h3>
+    <div class="manage-hint" id="pinHint">Enter your sync PIN to connect this device.</div>
+    <input type="text" inputmode="numeric" id="pinInput" placeholder="PIN" autocomplete="off"
+           style="width:100%;box-sizing:border-box;font-family:inherit;font-size:16px;padding:9px;margin:12px 0;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:var(--radius-sm);outline:none;text-align:center;letter-spacing:2px;"
+           onkeydown="if(event.key==='Enter')savePinModal()">
+    <div style="display:flex;gap:8px;">
+      <button onclick="savePinModal()" style="flex:1;background:var(--green);border:none;color:#fff;padding:9px;border-radius:var(--radius-sm);cursor:pointer;font-family:inherit;font-weight:600;font-size:13px;">Connect</button>
+      <button onclick="closePinModal()" style="flex:1;background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:9px;border-radius:var(--radius-sm);cursor:pointer;font-family:inherit;font-size:13px;">Cancel</button>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -912,14 +927,41 @@ let _cloudTimer = null;
 /** When true, save() skips cloud sync (used during cloudLoad to prevent feedback loop) */
 let _skipCloud = false;
 
-/** Get or prompt for the sync PIN, stored in localStorage */
+/** Return the stored sync PIN, or null. PIN entry is via the in-page modal
+ *  (openPinModal) — browsers silently suppress prompt() after a dismissed dialog. */
 function getPin() {
-  let pin = localStorage.getItem('workout_pin');
-  if (!pin) {
-    pin = prompt('Enter sync PIN:');
-    if (pin) localStorage.setItem('workout_pin', pin);
-  }
-  return pin;
+  return localStorage.getItem('workout_pin');
+}
+
+/** fetch() with a timeout so a hung backend degrades to "offline" after `ms`
+ *  instead of leaving the UI stuck on "syncing..." forever. */
+function fetchWithTimeout(url, opts = {}, ms = 15000) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), ms);
+  return fetch(url, { ...opts, signal: ctrl.signal }).finally(() => clearTimeout(timer));
+}
+
+/** Show the in-page PIN entry modal (optionally with a custom hint message). */
+function openPinModal(msg) {
+  const inp = document.getElementById('pinInput');
+  document.getElementById('pinHint').textContent = msg || 'Enter your sync PIN to connect this device.';
+  inp.value = localStorage.getItem('workout_pin') || '';
+  document.getElementById('pinOverlay').classList.add('open');
+  setTimeout(() => inp.focus(), 50);
+}
+
+/** Hide the PIN modal. */
+function closePinModal() {
+  document.getElementById('pinOverlay').classList.remove('open');
+}
+
+/** Persist the entered PIN and retry the cloud sync. */
+function savePinModal() {
+  const pin = document.getElementById('pinInput').value.trim();
+  if (!pin) return;
+  localStorage.setItem('workout_pin', pin);
+  closePinModal();
+  cloudLoad();
 }
 
 /** Persist state to localStorage + trigger debounced cloud save */
@@ -932,11 +974,11 @@ function save() {
 function cloudSave() {
   clearTimeout(_cloudTimer);
   const pin = getPin();
-  if (!pin) return;
+  if (!pin) { setSyncStatus('no PIN'); return; }
   setSyncStatus('pending');
   _cloudTimer = setTimeout(() => {
     setSyncStatus('syncing');
-    fetch(WORKER_URL, {
+    fetchWithTimeout(WORKER_URL, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
@@ -945,7 +987,7 @@ function cloudSave() {
       body: JSON.stringify(state)
     })
     .then(r => {
-      if (r.status === 401) { localStorage.removeItem('workout_pin'); setSyncStatus('wrong PIN'); return; }
+      if (r.status === 401) { localStorage.removeItem('workout_pin'); setSyncStatus('wrong PIN'); openPinModal('That PIN was rejected. Try again.'); return; }
       setSyncStatus(r.ok ? 'synced' : 'error');
     })
     .catch(() => setSyncStatus('error'));
@@ -955,13 +997,13 @@ function cloudSave() {
 /** Pull latest state from cloud on page load. Overwrites local data if cloud has content. */
 function cloudLoad() {
   const pin = getPin();
-  if (!pin) { setSyncStatus('no PIN'); return; }
+  if (!pin) { setSyncStatus('no PIN'); openPinModal(); return; }
   setSyncStatus('syncing');
-  fetch(WORKER_URL, {
+  fetchWithTimeout(WORKER_URL, {
     headers: { 'Authorization': 'Bearer ' + pin }
   })
   .then(r => {
-    if (r.status === 401) { localStorage.removeItem('workout_pin'); setSyncStatus('wrong PIN'); return null; }
+    if (r.status === 401) { localStorage.removeItem('workout_pin'); setSyncStatus('wrong PIN'); openPinModal('That PIN was rejected. Try again.'); return null; }
     if (!r.ok) throw new Error();
     return r.json();
   })
@@ -988,8 +1030,8 @@ function setSyncStatus(status) {
   if (status === 'syncing')     { el.textContent = 'syncing...'; el.style.color = 'var(--orange)'; }
   else if (status === 'pending'){ el.textContent = 'saving...';  el.style.color = 'var(--text3)'; }
   else if (status === 'synced') { el.textContent = 'synced';     el.style.color = 'var(--green)'; }
-  else if (status === 'wrong PIN') { el.textContent = 'wrong PIN (refresh)'; el.style.color = 'var(--red)'; }
-  else if (status === 'no PIN') { el.textContent = 'no PIN';     el.style.color = 'var(--text3)'; }
+  else if (status === 'wrong PIN') { el.textContent = 'wrong PIN — click'; el.style.color = 'var(--red)'; }
+  else if (status === 'no PIN') { el.textContent = 'click to set PIN'; el.style.color = 'var(--text3)'; }
   else                          { el.textContent = 'offline';    el.style.color = 'var(--red)'; }
 }
 
