@@ -554,10 +554,12 @@
   .cardio-row input:focus { border-color: var(--accent); }
   .cardio-row input::placeholder { color: var(--text3); opacity: .4; font-size: 9px; }
   .cardio-label { font-size: 8px; color: var(--text3); text-transform: uppercase; letter-spacing: .5px; }
-  .cardio-unit { font-size: 9px; color: var(--text3); flex-shrink: 0; }
-  .cardio-avg { font-size: 9px; color: var(--accent); flex-shrink: 0; font-family: 'JetBrains Mono', monospace; margin-left: 2px; }
+  /* unit/avg/delta reserve a fixed width so rows stay uniform even before any
+     history exists (empty ø/Δ would otherwise collapse and let the input grow). */
+  .cardio-unit { font-size: 9px; color: var(--text3); flex-shrink: 0; min-width: 24px; }
+  .cardio-avg { font-size: 9px; color: var(--accent); flex-shrink: 0; font-family: 'JetBrains Mono', monospace; margin-left: 2px; min-width: 32px; text-align: right; }
   /* Week-over-week delta: avg(last 7d) − avg(prior 7d). Neutral color — up/down not judged good/bad. */
-  .cardio-delta { font-size: 9px; color: var(--text2); flex-shrink: 0; font-family: 'JetBrains Mono', monospace; margin-left: 2px; }
+  .cardio-delta { font-size: 9px; color: var(--text2); flex-shrink: 0; font-family: 'JetBrains Mono', monospace; margin-left: 2px; min-width: 34px; text-align: right; }
   /* Compact 📈 button inside cardio rows — opens body-measurement history modal. */
   .cardio-row .history-btn { font-size: 10px; padding: 0 4px; flex-shrink: 0; margin-left: 2px; line-height: 1.4; }
 
