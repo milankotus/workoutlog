@@ -79,6 +79,8 @@
     Tracking cell contains (per day):
       - Weight input (kg) with 7-day average + week-over-week delta
       - Waist input (cm) with 7-day average + week-over-week delta
+      - Calories input (kcal) with 7-day average + week-over-week delta
+      - Protein input (g) with 7-day average + week-over-week delta
       - Free-form note textarea (always editable, even for past days)
 
     Each exercise cell contains:
@@ -1358,6 +1360,44 @@ function render() {
     waistRow.appendChild(waistIcon); waistRow.appendChild(waistInp); waistRow.appendChild(waistUnit); waistRow.appendChild(waistAvgSpan); waistRow.appendChild(waistDeltaSpan);
     trackCell.appendChild(waistRow);
 
+    // Calories row (kcal eaten)
+    const calRow = document.createElement('div'); calRow.className = 'cardio-row';
+    const calIcon = document.createElement('span'); calIcon.className = 'cardio-icon'; calIcon.textContent = '\u{1F525}';
+    calIcon.title = 'Calories history';
+    calIcon.onclick = () => openBodyHistory('calories', 'Calories', 'kcal');
+    const calInp = document.createElement('input'); calInp.type = 'text'; calInp.inputMode = 'decimal';
+    calInp.dataset.focusId = 'calories-' + cardioKey;
+    calInp.placeholder = 'kcal'; calInp.value = dayData.calories || '';
+    calInp.oninput = () => { calInp.value = normalizeNum(calInp.value); state.days[cardioKey].calories = calInp.value; save(); render(); };
+    const calUnit = document.createElement('span'); calUnit.className = 'cardio-unit'; calUnit.textContent = 'kcal';
+    const calAvg = avg7('calories', cardioKey);
+    const calAvgSpan = document.createElement('span'); calAvgSpan.className = 'cardio-avg';
+    calAvgSpan.textContent = calAvg !== null ? 'ø' + calAvg.toFixed(0) : '';
+    const calDelta = weekDelta('calories', cardioKey);
+    const calDeltaSpan = document.createElement('span'); calDeltaSpan.className = 'cardio-delta';
+    calDeltaSpan.textContent = calDelta === null ? 'Δ-' : 'Δ' + (calDelta >= 0 ? '+' : '−') + Math.abs(calDelta).toFixed(0);
+    calRow.appendChild(calIcon); calRow.appendChild(calInp); calRow.appendChild(calUnit); calRow.appendChild(calAvgSpan); calRow.appendChild(calDeltaSpan);
+    trackCell.appendChild(calRow);
+
+    // Protein row (grams eaten)
+    const protRow = document.createElement('div'); protRow.className = 'cardio-row';
+    const protIcon = document.createElement('span'); protIcon.className = 'cardio-icon'; protIcon.textContent = '\u{1F356}';
+    protIcon.title = 'Protein history';
+    protIcon.onclick = () => openBodyHistory('protein', 'Protein', 'g');
+    const protInp = document.createElement('input'); protInp.type = 'text'; protInp.inputMode = 'decimal';
+    protInp.dataset.focusId = 'protein-' + cardioKey;
+    protInp.placeholder = 'g'; protInp.value = dayData.protein || '';
+    protInp.oninput = () => { protInp.value = normalizeNum(protInp.value); state.days[cardioKey].protein = protInp.value; save(); render(); };
+    const protUnit = document.createElement('span'); protUnit.className = 'cardio-unit'; protUnit.textContent = 'g';
+    const protAvg = avg7('protein', cardioKey);
+    const protAvgSpan = document.createElement('span'); protAvgSpan.className = 'cardio-avg';
+    protAvgSpan.textContent = protAvg !== null ? 'ø' + protAvg.toFixed(0) : '';
+    const protDelta = weekDelta('protein', cardioKey);
+    const protDeltaSpan = document.createElement('span'); protDeltaSpan.className = 'cardio-delta';
+    protDeltaSpan.textContent = protDelta === null ? 'Δ-' : 'Δ' + (protDelta >= 0 ? '+' : '−') + Math.abs(protDelta).toFixed(0);
+    protRow.appendChild(protIcon); protRow.appendChild(protInp); protRow.appendChild(protUnit); protRow.appendChild(protAvgSpan); protRow.appendChild(protDeltaSpan);
+    trackCell.appendChild(protRow);
+
     // Day note — free-form text, editable for any date (past or future).
     // Persisted on every keystroke; no render() needed since nothing else depends on it.
     const noteEl = document.createElement('textarea');
@@ -2336,6 +2376,12 @@ function exportCSV() {
     }
     if (day.waist) {
       csv += [k, DAY_NAMES[d.getDay()], 'Waist', '', day.waist + ' cm'].map(q).join(';') + '\n';
+    }
+    if (day.calories) {
+      csv += [k, DAY_NAMES[d.getDay()], 'Calories', '', day.calories + ' kcal'].map(q).join(';') + '\n';
+    }
+    if (day.protein) {
+      csv += [k, DAY_NAMES[d.getDay()], 'Protein', '', day.protein + ' g'].map(q).join(';') + '\n';
     }
     if (day.note && day.note.trim()) {
       csv += [k, DAY_NAMES[d.getDay()], 'Note', '', day.note].map(q).join(';') + '\n';
