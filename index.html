@@ -1257,6 +1257,25 @@ function getMasteryStreak(exName, goal, numSets, upToDate) {
   return streak;
 }
 
+/**
+ * True if the exercise met the mastery goal (all sets) in ANY session up to
+ * `upToDate`. Mastery is achieved by fulfilling the goal just once — it does
+ * not require a streak and is not lost by later sessions that miss the goal.
+ */
+function hasMasteredOnce(exName, goal, numSets, upToDate) {
+  const limit = dk(upToDate);
+  const dates = Object.keys(state.days).filter(k => k <= limit);
+  for (const k of dates) {
+    const dd = state.days[k];
+    if (!dd || !dd.exercises) continue;
+    const ex = dd.exercises.find(e => e.name === exName);
+    if (!ex || ex.skipped || ex.ignored) continue;
+    if (!ex.sets || !ex.sets.some(s => s)) continue;
+    if (ex.sets.slice(0, numSets).every(s => s && parseInt(s) >= goal)) return true;
+  }
+  return false;
+}
+
 /** Normalize numeric input: replace comma with dot, strip non-numeric chars, keep only one dot.
     Used for weight, waist, set values, mastery goal — anywhere numbers are entered. */
 function normalizeNum(str) {
@@ -1627,15 +1646,11 @@ function cell(d, dd, ei) {
       const exDef = state.exercises.find(e => e.name === ex.name);
       const goal = exDef && exDef.masteryReps;
       if (goal > 0) {
-        const streak = Math.min(getMasteryStreak(ex.name, goal, numSets, d), 3);
+        const mastered = hasMasteredOnce(ex.name, goal, numSets, d);
         const badge = document.createElement('div');
-        badge.className = 'mastery-badge mastery-' + streak;
-        if (streak >= 3) {
+        badge.className = 'mastery-badge mastery-' + (mastered ? 3 : 0);
+        if (mastered) {
           badge.textContent = '\u2605 MASTERED \u2605';
-        } else if (streak === 2) {
-          badge.textContent = '\u2191 ' + goal + ' reps — ' + streak + '/3';
-        } else if (streak === 1) {
-          badge.textContent = goal + ' reps — ' + streak + '/3';
         } else {
           badge.textContent = 'goal: ' + goal + ' reps';
         }
