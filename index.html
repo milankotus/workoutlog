@@ -1193,7 +1193,9 @@ function getRecentSets(dateKey, name, n) {
  *  before `dateKey`. Skipped days count toward the 5-day window but are excluded from
  *  the average (so a single skip narrows the sample to 4, two skips to 3, etc).
  *  Ignored sessions are fully transparent — they don't count toward the window at all.
- *  Unfilled set values count as 0. Returns null if no usable history. */
+ *  Scheduled-but-unfilled sessions (present, not skipped, no reps entered) are likewise
+ *  invisible — they neither consume a window slot nor count as 0 (mirrors the history
+ *  modal's `total > 0` filter). Returns null if no usable history. */
 function getRecent5Avg(dateKey, name) {
   var dates = Object.keys(state.days).filter(function(k) { return k < dateKey; }).sort().reverse();
   var sums = [];
@@ -1208,9 +1210,13 @@ function getRecent5Avg(dateKey, name) {
     if (!ex) continue;
     // Ignored = invisible (do not consume a window slot)
     if (ex.ignored) continue;
+    // Unfilled (not skipped, no reps entered) = invisible too — a scheduled-but-empty
+    // session is not a real data point. Counting it as 0 would drag the average down and
+    // disagree with the history modal's AVG-5 (which filters on total > 0).
+    if (!ex.skipped && (!ex.sets || !ex.sets.some(function(s) { return s; }))) continue;
     scheduled++;
     if (ex.skipped) continue;
-    var sum = (ex.sets || []).reduce(function(a, v) { return a + (parseInt(v) || 0); }, 0);
+    var sum = ex.sets.reduce(function(a, v) { return a + (parseInt(v) || 0); }, 0);
     sums.push(sum);
   }
   if (!sums.length) return null;
