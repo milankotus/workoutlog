@@ -214,6 +214,8 @@
     background: rgba(0,0,0,.3); padding: 1px 7px; border-radius: 8px;
     margin-top: 3px; letter-spacing: 1px;
   }
+  /* Collapse/expand arrow — only shown on mobile (see MOBILE RESPONSIVE) */
+  .day-toggle { display: none; }
 
   /* === EXERCISE ROW — flex container for exercise cells, wraps if >3-4 exercises === */
   .exercises-row { display: flex; flex: 1; gap: 6px; min-width: 0; flex-wrap: wrap; }
@@ -684,6 +686,18 @@
     .day-label-date { font-size: 11px; }
     .day-label .today-tag { margin-top: 0; margin-left: 4px; }
 
+    /* Collapsible days: tapping the day bar shows/hides the rest of the row.
+       Desktop ignores the .collapsed class, so every day stays visible there. */
+    .day-label { position: relative; cursor: pointer; user-select: none; }
+    .day-toggle {
+      display: block; position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+      font-size: 12px; color: white;
+    }
+    .day-toggle::after { content: '\25BE'; }                     /* ▾ expanded */
+    .day-row.collapsed .day-toggle::after { content: '\25B8'; }  /* ▸ collapsed */
+    .day-row.collapsed > :not(.day-label) { display: none; }
+    .day-row.collapsed { margin-bottom: 6px; padding-bottom: 6px; }
+
     .tracking-cell {
       width: 100%; min-width: 100%; flex-direction: row; flex-wrap: wrap;
       gap: 6px; padding: 8px;
@@ -829,6 +843,11 @@ const today = new Date(); today.setHours(0,0,0,0);
 
 /** weekStart = Monday of the currently displayed week */
 let weekStart = getMonday(new Date(today));
+
+/** Mobile only: date keys (dk) of the days whose row is expanded.
+    Defaults to just today; reset to that default whenever the displayed week
+    changes, so other weeks start fully collapsed. Not persisted. */
+let expandedDays = new Set([dk(today)]);
 
 /**
  * Returns the default state object used when no data exists in localStorage.
@@ -1335,13 +1354,25 @@ function render() {
     label.innerHTML =
       '<div class="day-label-name">' + DAY_SHORT[dow] + '</div>' +
       '<div class="day-label-date">' + fmt(d) + '</div>' +
-      (isToday ? '<div class="today-tag">TODAY</div>' : '');
+      (isToday ? '<div class="today-tag">TODAY</div>' : '') +
+      '<div class="day-toggle"></div>';
     row.appendChild(label);
 
     // Day data setup — create empty record on first access
     const cardioKey = dk(d);
     if (!state.days[cardioKey]) state.days[cardioKey] = { exercises: [] };
     const dayData = state.days[cardioKey];
+
+    // Mobile collapse/expand: tapping the day bar toggles the rest of the row.
+    // The class is toggled directly (no render() needed); expandedDays keeps the
+    // choice alive across the re-renders triggered by typing.
+    if (!expandedDays.has(cardioKey)) row.classList.add('collapsed');
+    label.onclick = () => {
+      if (!window.matchMedia('(max-width: 600px)').matches) return;  // desktop never collapses
+      if (expandedDays.has(cardioKey)) expandedDays.delete(cardioKey);
+      else expandedDays.add(cardioKey);
+      row.classList.toggle('collapsed', !expandedDays.has(cardioKey));
+    };
 
     // Tracking cell — holds weight + waist rows
     const trackCell = document.createElement('div');
@@ -1706,12 +1737,14 @@ function moveExercise(d, ei, dir) {
 /** Navigate to previous/next week (delta = -1 or +1) */
 function changeWeek(delta) {
   weekStart.setDate(weekStart.getDate() + delta * 7);
+  expandedDays = new Set([dk(today)]);  // mobile: back to default (only today expanded)
   render();
 }
 
 /** Jump back to the week containing today */
 function goToday() {
   weekStart = getMonday(new Date(today));
+  expandedDays = new Set([dk(today)]);  // mobile: back to default (only today expanded)
   render();
 }
 
