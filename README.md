@@ -18,32 +18,38 @@ Single-file calisthenics & nutrition tracker based on [Hybrid Calisthenics](http
 - Custom activities support configurable fields (km, min, kg, elevation)
 - Combined chart (weight, waist, calories, protein) with time range selector
 - Export/import JSON backups, CSV export
-- Cloud sync across devices (Cloudflare Worker + JSONBin.io)
+- Cloud sync across devices (Cloudflare Worker + Cloudflare KV)
 - Mobile responsive layout
 
 ## Cloud Sync
 
-Data syncs across devices via a **Cloudflare Worker** proxy that forwards to JSONBin.io.
+Data syncs across devices via a **Cloudflare Worker** that stores the app state directly in **Cloudflare KV** (migrated off JSONBin.io on 2026-05-26).
 
-- **Worker:** `workout-sync` on Cloudflare (holds JSONBin API key server-side)
-- **Storage:** JSONBin.io bin `69c52ee6aa77b81da920538e`
+- **Worker:** `workout-sync` (https://workout-sync.milan-kotus.workers.dev), source in [`worker/`](worker/)
+- **Storage:** KV namespace bound as `WORKOUT_KV`, single key `state`
 - **Auth:** PIN sent as `Authorization: Bearer <PIN>` header, validated by the Worker
+- **API:** `GET` returns the stored JSON (or `{}`), `PUT` validates and stores JSON
 - **Sync:** localStorage for instant saves, debounced cloud PUT every 3 seconds
 
-### Cloudflare Worker secrets
+### Cloudflare Worker configuration
 
-| Variable | Description |
-|---|---|
-| `JSONBIN_KEY` | JSONBin.io X-Master-Key |
-| `JSONBIN_BIN` | JSONBin.io bin ID |
-| `AUTH_PIN` | PIN for client authentication |
+| Name | Kind | Description |
+|---|---|---|
+| `AUTH_PIN` | Secret | PIN for client authentication |
+| `WORKOUT_KV` | KV binding | Namespace holding the app state |
+
+> **Gotcha:** deploying from the Cloudflare dashboard's "Edit code" editor strips KV bindings.
+> Manage bindings only in **Settings → Bindings** (and deploy from there), or deploy with `wrangler deploy`.
+> A missing binding shows up as HTTP 500 / `error code: 1101` without CORS headers, so the app reports "offline".
+
+See [`worker/README.md`](worker/README.md) for setup and deployment.
 
 ### Architecture
 
 ```
 Browser (GitHub Pages)
    ├── localStorage (instant, offline fallback)
-   └── fetch() ──→ Cloudflare Worker ──→ JSONBin.io
+   └── fetch() ──→ Cloudflare Worker ──→ Cloudflare KV
                     (validates PIN)       (stores JSON)
 ```
 
